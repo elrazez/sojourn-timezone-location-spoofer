@@ -27,6 +27,8 @@ export type World = {
   status(): ReturnType<typeof status>;
   state(): CoverageState;
   zoneOf(target: SessionTarget): string | undefined;
+  // The two storage areas apart, so a test can say which one a value was written to.
+  areas(): { local: Record<string, unknown>; session: Record<string, unknown> };
 };
 
 export type WorldOptions = {
@@ -39,7 +41,8 @@ export function world(options: WorldOptions = {}): World {
   let state = NO_COVERAGE;
   let refusals: Refusal[] = [];
   const zones = new Map<string, string>();
-  const stored = new Map<string, unknown>(Object.entries(options.stored ?? {}));
+  const local = new Map<string, unknown>(Object.entries(options.stored ?? {}));
+  const session = new Map<string, unknown>();
 
   const refusalFor = (command: Command['type'], target: SessionTarget): string | undefined =>
     refusals.find(
@@ -79,17 +82,17 @@ export function world(options: WorldOptions = {}): World {
     onChildDetached() {},
   };
 
-  const storage: StorageAdapter = {
+  const area = (values: Map<string, unknown>): StorageAdapter => ({
     async get(storageKey) {
       if (options.storageFails) throw new Error(options.storageFails);
-      return stored.get(storageKey);
+      return values.get(storageKey);
     },
     async set(storageKey, value) {
       if (options.storageFails) throw new Error(options.storageFails);
-      stored.set(storageKey, value);
+      values.set(storageKey, value);
     },
     onChange() {},
-  };
+  });
 
   const tabs: TabsAdapter = {
     async list() {
@@ -102,7 +105,13 @@ export function world(options: WorldOptions = {}): World {
 
   const action: ActionAdapter = { async setBadge() {} };
 
-  const adapters: Adapters = { debuggerAdapter, storage, tabs, action, session: storage };
+  const adapters: Adapters = {
+    debuggerAdapter,
+    storage: area(local),
+    session: area(session),
+    tabs,
+    action,
+  };
 
   return {
     apply(...events) {
@@ -122,6 +131,7 @@ export function world(options: WorldOptions = {}): World {
     status: () => status(state),
     state: () => state,
     zoneOf: (target) => zones.get(key(target)),
+    areas: () => ({ local: Object.fromEntries(local), session: Object.fromEntries(session) }),
   };
 }
 

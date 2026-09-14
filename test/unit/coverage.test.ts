@@ -27,12 +27,13 @@ const covering = (cityId: string, tabIds: number[], options: WorldOptions = {}) 
 test('scenario 1: the happy path covers the tab, then its frame and its worker', async () => {
   const it = covering('tokyo', [1]);
 
+  // The badge waits for a round with nothing else in it, so no tab's Override queues behind it.
   expect(await it.settle()).toEqual([
     { type: 'rederive' },
     { type: 'attach', tabId: 1 },
-    { type: 'badge', text: '', color: ALERT },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'badge', text: '', color: ALERT },
   ]);
   expect(it.status().covered).toBe(1);
 
@@ -66,6 +67,8 @@ test('scenario 1: the happy path covers the tab, then its frame and its worker',
     restricted: 0,
     notCovered: [],
     badge: { text: '', color: ALERT },
+    // Three sessions on the first pass and the same three again on the tick.
+    zoneSends: 6,
   });
 });
 
@@ -99,6 +102,7 @@ test('scenario 10: with no Selection nothing attaches and no bar appears', async
     restricted: 0,
     notCovered: [],
     badge: { text: '', color: ALERT },
+    zoneSends: 0,
   });
 });
 
@@ -126,14 +130,19 @@ test('scenario 2: Cancel pauses every tab, and only Resume brings them back', as
   expect(await it.settle()).toEqual([
     { type: 'attach', tabId: 1 },
     { type: 'attach', tabId: 2 },
-    { type: 'badge', text: '', color: ALERT },
-    { type: 'remember-paused', paused: false },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
     { type: 'zone', target: { tabId: 2 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 2 } },
+    { type: 'badge', text: '', color: ALERT },
+    { type: 'remember-paused', paused: false },
   ]);
   expect(it.status().covered).toBe(2);
+  // Paused belongs to the session area, which a browser restart clears, and the Selection to local.
+  expect(it.areas()).toEqual({
+    local: { selection: { cityId: 'tokyo' }, enabled: true },
+    session: { paused: false },
+  });
 });
 
 test('scenario 3: Disabled detaches all three tabs, Enabled covers them again', async () => {
@@ -154,13 +163,13 @@ test('scenario 3: Disabled detaches all three tabs, Enabled covers them again', 
     { type: 'attach', tabId: 1 },
     { type: 'attach', tabId: 2 },
     { type: 'attach', tabId: 3 },
-    { type: 'badge', text: '', color: ALERT },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
     { type: 'zone', target: { tabId: 2 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 2 } },
     { type: 'zone', target: { tabId: 3 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 3 } },
+    { type: 'badge', text: '', color: ALERT },
   ]);
   expect(it.status().covered).toBe(3);
 });
@@ -176,14 +185,48 @@ test('scenario 5: a worker restart finds the sessions it already holds and keeps
     { type: 'rederive' },
     { type: 'attach', tabId: 1 },
     { type: 'attach', tabId: 2 },
-    { type: 'badge', text: '', color: ALERT },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
     { type: 'zone', target: { tabId: 2 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 2 } },
+    { type: 'badge', text: '', color: ALERT },
   ]);
   expect(it.status().covered).toBe(2);
   expect(it.zoneOf({ tabId: 1 })).toBe(TOKYO);
+});
+
+test('a tab another client held at worker start is attached again once that client has gone', async () => {
+  const it = covering('tokyo', [1]);
+  // Chrome answers the attach with the sentence that means the session is already this extension's,
+  // but the sends then land nowhere, which is how a rival client holding the tab looks from here.
+  it.refuse(
+    { command: 'attach', error: 'Another debugger is already attached to the tab with id: 1.' },
+    { command: 'zone', error: 'Debugger is not attached to the tab with id: 1.' },
+  );
+
+  expect(await it.settle()).toEqual([
+    { type: 'rederive' },
+    { type: 'attach', tabId: 1 },
+    { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
+    { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'badge', text: '1', color: ALERT },
+  ]);
+  expect(it.status().notCovered).toEqual([
+    { tabId: 1, reason: 'Debugger is not attached to the tab with id: 1.' },
+  ]);
+
+  // The rival lets go, and the next tick is what finds out.
+  it.allow('attach');
+  it.allow('zone');
+  it.apply({ type: 'tick', now: 1000 });
+
+  expect(await it.settle()).toEqual([
+    { type: 'attach', tabId: 1 },
+    { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
+    { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'badge', text: '', color: ALERT },
+  ]);
+  expect(it.status().covered).toBe(1);
 });
 
 test('scenario 4: a City change that clashes in a shared renderer lands on the next tick', async () => {
@@ -302,10 +345,10 @@ test('switching Enabled back on is the other way out of Paused', async () => {
   expect(it.status().paused).toBe(false);
   expect(await it.settle()).toEqual([
     { type: 'attach', tabId: 1 },
-    { type: 'badge', text: '', color: ALERT },
-    { type: 'remember-paused', paused: false },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'badge', text: '', color: ALERT },
+    { type: 'remember-paused', paused: false },
   ]);
   expect(it.status().covered).toBe(1);
 });

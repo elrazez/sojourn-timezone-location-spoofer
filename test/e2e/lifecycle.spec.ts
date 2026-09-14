@@ -19,6 +19,9 @@ const FILE_PAGE = fileURLToPath(new URL('../pages/index.html', import.meta.url))
 const RED = [217, 48, 37, 255];
 const ANOTHER_CLIENTS_ZONE = 'Europe/Paris';
 
+// Long enough to hold the detach, the fallback, and the reconcile that takes the zone back.
+const SAMPLE_ACROSS_DETACH = 2000;
+
 const badge = (worker: import('@playwright/test').Worker) =>
   worker.evaluate(async () => ({
     text: await chrome.action.getBadgeText({}),
@@ -89,27 +92,67 @@ test('a chrome:// tab is Restricted, counted apart from Not Covered, and never o
 test.describe('in one renderer process', () => {
   test.use({ extraArgs: ['--renderer-process-limit=1'] });
 
-  test('a Covered tab keeps Asia/Tokyo when the tab that owned the renderer closes', async ({
+  test('a Covered tab is handed its real zone for under a second when the owner of its renderer leaves', async ({
     context,
     origins,
     spoofer,
   }) => {
-    await spoofer.select('tokyo');
-    // Start from no tabs, so the first tab opened here is the one that takes the renderer's zone.
+    // Start from no tabs, so the only pages here are the two this test opens.
     for (const open of context.pages()) await open.close();
 
-    const first = await coveredPage(context, TOKYO_ZONE);
-    await first.goto(origins.localhost);
-    await expect.poll(() => readZone(first)).toBe(TOKYO_ZONE);
+    // The renderer is only shared if nothing new appears when the second tab opens. A browser
+    // session lists process ids without saying which target runs in which, so this is the check
+    // that is available: the same-site popup shares its opener's process, and no renderer is added.
+    const browser = context.browser();
+    if (!browser) throw new Error('a persistent context with no browser cannot be asked for processes');
+    const session = await browser.newBrowserCDPSession();
+    const renderers = async (): Promise<number[]> => {
+      const { processInfo } = await session.send('SystemInfo.getProcessInfo');
+      return processInfo.filter((process) => process.type === 'renderer').map((process) => process.id);
+    };
 
-    const second = await coveredPage(context, TOKYO_ZONE);
-    await second.goto(origins.localhost);
-    await expect.poll(() => readZone(second)).toBe(TOKYO_ZONE);
+    // Another debugging client owns this renderer's zone, having set the same zone Spoofer wants
+    // first. Spoofer's own sends then succeed and change nothing, which is the shared-renderer case.
+    const owner = await context.newPage();
+    await owner.goto(`${origins.localhost}opener.html?target=${origins.localhost}index.html`);
+    const rival = await context.newCDPSession(owner);
+    await rival.send('Emulation.setTimezoneOverride', { timezoneId: TOKYO_ZONE });
 
-    await first.close();
+    await spoofer.select('tokyo');
+    await expect.poll(async () => (await spoofer.status()).covered).toBe(1);
+    const before = await renderers();
 
-    // The interval bounds this window to 1 s, and the close itself is a signal to re-send sooner.
-    await expect.poll(() => readZone(second), { timeout: 1100 }).toBe(TOKYO_ZONE);
+    const [shared] = await Promise.all([context.waitForEvent('page'), owner.click('#open')]);
+    await shared.waitForLoadState();
+    await expect.poll(() => readZone(shared)).toBe(TOKYO_ZONE);
+    expect(await renderers()).toEqual(before);
+
+    // The rival leaves with no event to tell Spoofer, so the process falls back to the real zone
+    // until the next reconcile takes it. Sampling runs across the detach to catch that window.
+    const sampling = shared.evaluate(
+      (span) =>
+        new Promise<{ zone: string; at: number }[]>((done) => {
+          const samples: { zone: string; at: number }[] = [];
+          const tick = setInterval(() => {
+            samples.push({ zone: Intl.DateTimeFormat().resolvedOptions().timeZone, at: performance.now() });
+          }, 10);
+          setTimeout(() => {
+            clearInterval(tick);
+            done(samples);
+          }, span);
+        }),
+      SAMPLE_ACROSS_DETACH,
+    );
+    await new Promise((wait) => setTimeout(wait, 200));
+    await rival.detach();
+    const samples = await sampling;
+
+    const lost = samples.find((sample) => sample.zone === BASELINE_ZONE);
+    expect(lost, 'the tab never observed the real zone, so nothing was shared').toBeDefined();
+    const back = samples.find((sample) => lost !== undefined && sample.at > lost.at && sample.zone === TOKYO_ZONE);
+    expect(back, 'the tab never got Asia/Tokyo back').toBeDefined();
+    // The interval bounds the window to 1 s, which is the Residual Trace the brief names.
+    expect((back?.at ?? 0) - (lost?.at ?? 0)).toBeLessThanOrEqual(1100);
   });
 });
 

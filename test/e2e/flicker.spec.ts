@@ -20,6 +20,7 @@ test('a covered page and a covered worker see one zone and no timezonechange acr
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
 
+  const before = (await spoofer.status()).zoneSends;
   const [inPage, inWorker] = await page.evaluate(
     async ([span, every]) => {
       const sample = () => ({
@@ -68,13 +69,22 @@ test('a covered page and a covered worker see one zone and no timezonechange acr
     [SAMPLE_FOR, EVERY] as const,
   );
 
-  // Recorded either way, because whether Chrome fires the event at all is part of the answer.
-  console.log('flicker probe', JSON.stringify({ inPage, inWorker }));
+  const resends = (await spoofer.status()).zoneSends - before;
 
+  // Recorded either way, because whether Chrome fires the event at all is part of the answer.
+  console.log('flicker probe', JSON.stringify({ inPage, inWorker, resends }));
+
+  // What makes the single value evidence: the zone really was re-sent underneath the samples.
+  expect(resends).toBeGreaterThanOrEqual(4);
   expect(inPage.zones).toEqual([TOKYO_ZONE]);
   expect(inPage.offsets).toEqual([TOKYO_OFFSET]);
-  expect(inPage.events).toBe(0);
   expect(inWorker.zones).toEqual([TOKYO_ZONE]);
   expect(inWorker.offsets).toEqual([TOKYO_OFFSET]);
+
+  // Chromium does not ship timezonechange, so these zero counts say the listener heard nothing
+  // from an event that cannot fire here, not that a firing event was missed.
+  expect(inPage.hasEvent).toBe(false);
+  expect(inWorker.hasEvent).toBe(false);
+  expect(inPage.events).toBe(0);
   expect(inWorker.events).toBe(0);
 });

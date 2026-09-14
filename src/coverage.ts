@@ -42,6 +42,9 @@ export type CoverageState = {
   badge: Badge | null;
   // When state was last read from the browser, and why that read is not to be trusted if it failed.
   derived: { at: number; error?: string } | null;
+  // How many times the zone has been sent to a session since the worker started. Nothing acts on
+  // it: it is what lets a test tell a page that never flickered from a page nothing re-sent to.
+  zoneSends: number;
   now: number;
 };
 
@@ -93,6 +96,7 @@ export type CoverageStatus = {
   restricted: number;
   notCovered: readonly { tabId: number; reason: string }[];
   badge: Badge;
+  zoneSends: number;
   error?: string;
 };
 
@@ -106,6 +110,10 @@ const RESTRICTED = [
 // Chrome says this when the session is one this extension already holds, which is what a service
 // worker restart looks like from here: the tab is still Covered and only needs its overrides again.
 const ALREADY_OURS = 'Another debugger is already attached';
+
+// And this when the session is not ours after all, so the attach has to be made again: another
+// client held the tab when Spoofer attached, and every send since has gone nowhere.
+const NOT_ATTACHED = 'Debugger is not attached';
 
 const BADGE_OFF = '#5f6368';
 const BADGE_ALERT = '#d93025';
@@ -130,6 +138,7 @@ export const NO_COVERAGE: CoverageState = {
   sessions: new Map(),
   badge: null,
   derived: null,
+  zoneSends: 0,
   now: 0,
 };
 
@@ -214,14 +223,19 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
       sessions.delete(keyOf(event));
       return reclaim({ ...state, sessions });
     }
-    case 'sent':
-      return withSession(state, event.target, (session) => ({
+    case 'sent': {
+      // A send that lands nowhere says the tab is not attached to Spoofer, whatever the attach
+      // answered, so record the refusal on the tab and let a later tick attach it again.
+      if (event.error?.includes(NOT_ATTACHED)) return unattach(state, event.target.tabId, event.error);
+      const sent = withSession(state, event.target, (session) => ({
         ...session,
         sends: {
           ...session.sends,
           [event.what]: { at: state.now, ...(event.error === undefined ? {} : { error: event.error }) },
         },
       }));
+      return event.what === 'zone' ? { ...sent, zoneSends: sent.zoneSends + 1 } : sent;
+    }
     case 'resumed':
       return { ...state, paused: false };
     case 'badge-set':
@@ -265,7 +279,9 @@ export function reconcile(state: CoverageState): Command[] {
 
   // Both of these write down what Spoofer believes, so neither runs off a read that just failed:
   // an empty badge would hide a real count, and a false Paused would forget the dismissed bar.
-  if (state.derived.error === undefined) {
+  // They also wait for a round with nothing else in it, so a new tab's Override is never queued
+  // behind a chrome.action or a storage call. settle loops until nothing is due, so they land.
+  if (commands.length === 0 && state.derived.error === undefined) {
     const badge = desiredBadge(state);
     if (state.badge?.text !== badge.text || state.badge.color !== badge.color) {
       commands.push({ type: 'badge', ...badge });
@@ -302,6 +318,7 @@ export function status(state: CoverageState): CoverageStatus {
       .filter((tab) => tab.status === 'not covered')
       .map((tab) => ({ tabId: tab.tabId, reason: reasonFor(state, tab.tabId) })),
     badge: desiredBadge(state),
+    zoneSends: state.zoneSends,
     ...(state.derived?.error === undefined ? {} : { error: state.derived.error }),
   };
 }
@@ -469,6 +486,14 @@ function attach(state: CoverageState, tabId: number): CoverageState {
   const next = withTab(state, tabId, { ...tab, attach: { at: state.now } });
   if (next.sessions.has(String(tabId))) return next;
   return { ...next, sessions: new Map(next.sessions).set(String(tabId), { tabId, sends: {} }) };
+}
+
+// The tab keeps the refusal as its attach result, so it reads Not Covered with a reason and the
+// next tick attaches it again, rather than attaching in a tight loop inside one settle.
+function unattach(state: CoverageState, tabId: number, error: string): CoverageState {
+  const tab = state.tabs.get(tabId);
+  if (!tab) return state;
+  return dropSessions(withTab(state, tabId, { ...tab, attach: { at: state.now, error } }), tabId);
 }
 
 // A session leaving can release the zone for a whole renderer process with no event to say so, so

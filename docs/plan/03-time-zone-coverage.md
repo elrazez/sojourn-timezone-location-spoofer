@@ -71,7 +71,7 @@ Call the Skill tool with `code-review`. Fixed point: the SHA from the start. Spe
 
 ## Done when
 
-- [ ] `npm test` is green; the reducer tests cover all ten scenarios and browser tests 1 to 16 exist, with at most the prerender test, the New Tab Page test, and the tab discard test skipped, each with its reason.
+- [ ] `npm test` is green; the reducer tests cover all ten scenarios and browser tests 1 to 16 exist, with at most the prerender test, the New Tab Page test, the tab discard test, and the tab created straight onto a url on the same machine skipped, each with its reason.
 - [ ] `grep -rn "Runtime\." src/ | grep -v runIfWaitingForDebugger` prints nothing.
 - [ ] `grep -rn "ponytail:" src/` shows the reconcile interval's comment.
 - [ ] `git branch --list 'prototype/*'` shows `prototype/coverage-state`, and `git ls-files | grep -i prototype` prints nothing on `main`.
