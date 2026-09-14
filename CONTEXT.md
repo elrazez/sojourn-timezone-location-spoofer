@@ -32,6 +32,18 @@ _Avoid_: spoofed values, fake values
 A tab whose pages currently observe the Override. The count of covered tabs is what the popup shows.
 _Avoid_: attached, patched, protected
 
+**Not Covered**:
+A tab showing a web page that should observe the Override but does not, whatever the reason. The badge counts these.
+_Avoid_: uncovered, exposed, leaking
+
+**Restricted**:
+A tab whose top-level page no extension may touch, such as a browser settings page, another extension's page, or the Chrome Web Store. It is neither Covered nor Not Covered and never counts on the badge.
+_Avoid_: blocked, excluded, skipped
+
+**Paused**:
+The state after the user dismisses Chrome's debugging bar: no tab is Covered until the user presses Resume or switches Enabled back on. Distinct from Disabled, which the user chose in the popup.
+_Avoid_: stopped, suspended, cancelled
+
 **Enabled**:
 The user-set switch. Disabled means every tab observes real values and the badge says so.
 _Avoid_: active, on/off, running
@@ -39,6 +51,10 @@ _Avoid_: active, on/off, running
 **Trace**:
 Any observable difference between a covered page and the same page in an unmodified browser, other than the Override itself.
 _Avoid_: leak, tell, fingerprint, artifact
+
+**Residual Trace**:
+A Trace the mechanism cannot close, bounded and measured by the Audit and named in the README.
+_Avoid_: known leak, accepted artifact
 
 **Audit**:
 The differential test that compares a covered page against a Baseline and asserts the only differences are the Override.

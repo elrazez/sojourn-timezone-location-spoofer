@@ -11,9 +11,9 @@ Call the Skill tool with `wizard`. Author `scripts/manual-check.sh` from the ski
 1. Build, then load `extension/` unpacked at `chrome://extensions` with Developer mode on.
 2. Allow the extension in incognito, open an incognito window, and confirm the badge and a page's zone match a normal window.
 3. Pick Tokyo in the popup and open a third-party geolocation and time zone check page of the human's choosing; confirm the zone, the coordinates, and that the site raised its own permission prompt.
-4. Observe the "started debugging this browser" bar and press its Cancel: the badge reads `OFF`, the popup shows Paused, and Resume restores coverage.
-5. Open DevTools on a covered tab and confirm the behaviour matches the ADR.
-6. Leave the browser idle for two minutes, open a new tab, and confirm it is covered (the service worker restart path).
+4. Observe the "started debugging this browser" bar and press its Cancel: the badge reads `OFF`, the popup shows Paused, and Resume restores coverage and shows the bar again.
+5. Open DevTools on a covered tab and confirm the tab stays Covered; then set a zone in the DevTools Sensors panel on a fresh tab and confirm the badge counts that tab as Not Covered.
+6. With tabs Covered, stop the extension's service worker from `chrome://serviceworker-internals`, then confirm open tabs stay Covered and a new tab is Covered (the service worker restart path; an attached session keeps the worker alive, so idling does not exercise it).
 7. Turn the switch off and on and confirm an open tab follows without reload.
 
 Each stage confirms before moving on; no stage captures a secret, so `write_env` and `set_secret` stay unused. The wizard is a repeatable path, so commit it and link it from the README.

@@ -29,12 +29,6 @@ then `02`, and so on. `00-brief.md` is not a phase; it is the spec every phase i
 | 06 | `06-audit.md` | The differential Audit and every Trace it finds, fixed |
 | 07 | `07-release.md` | Manual-check wizard, packaged zip, final review, tag |
 
-## If phase 01 picks the other mechanism
+## Mechanism
 
-The phases from 02 on are written for the recommended mechanism, a DevTools Protocol override through `chrome.debugger` (mechanism B in the brief). If the ADR from phase 01 picks the MAIN-world script mechanism (A) instead, phase 01's last step rewrites `02` to `06` before it stops. The rewrite keeps the same phase boundaries, seams, and Audit, and swaps the coverage design for this skeleton:
-
-- **Injection**: a MAIN-world content script at `document_start`, `all_frames`, `match_about_blank`, `match_origin_as_fallback`, registered dynamically per City so the Selection is baked into the script (one generated file per City, or `chrome.userScripts` with inline code if the user accepts the "Allow user scripts" toggle). No async config hand-off: the first page script must already see the Override.
-- **Time zone**: replace `Date` local-time accessors and setters, the `Date` constructor's local-time forms, `Date.parse` of offset-less strings, `toString`/`toTimeString`/`toDateString`/`toLocale*`, `Intl.DateTimeFormat` (constructor default, `resolvedOptions`, `format*`), and `Temporal.Now` if present. Offsets and long zone names come from the captured original `Intl.DateTimeFormat` with an explicit `timeZone`.
-- **Geolocation**: call the real `getCurrentPosition`/`watchPosition` so the permission prompt and timing stay genuine, then replace the prototype getters on `GeolocationCoordinates` and `GeolocationPosition.toJSON` so the real position object reports the Override.
-- **Stealth layer**: every replaced function is prototype-less, keeps `name` and `length`, and `Function.prototype.toString` reports native source for it (and for itself); errors rethrown from replaced functions carry no `chrome-extension://` frame; `contentWindow`/`contentDocument` getters apply the patch to a child window on first access to close the same-origin iframe race; the `Worker` and `SharedWorker` constructors prefix same-origin classic worker sources with the patch. Cross-origin and module workers remain a documented residual Trace.
-- **Phases**: 02 builds the injection and the first covered page; 03 the time zone surface; 04 geolocation; 05 the popup unchanged; 06 the Audit with the stealth probes turned up to full.
+Phase 01 chose the DevTools Protocol override through `chrome.debugger`; `docs/adr/0001-override-mechanism.md` records the decision and why MAIN-world page-script patching was rejected.

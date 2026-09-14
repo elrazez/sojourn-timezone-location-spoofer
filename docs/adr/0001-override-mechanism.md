@@ -1,0 +1,14 @@
+# Override through the DevTools Protocol
+
+Spoofer produces the Override by attaching `chrome.debugger` to every tab from the extension service worker and sending `Emulation.setTimezoneOverride` and `Emulation.setGeolocationOverride`, so the browser engine itself computes every time and position value a page reads and no replaced function exists for a lie check to find. We accept what that costs: a "Spoofer started debugging this browser" bar on every tab while any tab is attached, the install warning "Access the page debugger backend", and a short list of timing-bounded Residual Traces (the shared-process zone window, the position timestamp age, first-script gaps in popups, prerendered pages and shared workers, and the bar's viewport change), each measured by the Audit and named in the README. Permissions are exactly `debugger` and `storage`.
+
+## Considered Options
+
+- **DevTools Protocol through `chrome.debugger` (chosen).** Values come from the engine, so `Function.prototype.toString`, descriptors, stacks, workers and `Temporal` agree by construction. Its Traces are bounded in time and measurable. Evidence: `docs/research/chrome-debugger-api.md`, `docs/research/cdp-emulation-scope.md`.
+- **MAIN-world content script replacing `Date`, `Intl`, `Temporal.Now` and geolocation (rejected).** Content scripts never run in workers, so service, shared, module and cross-origin workers keep the real zone, and CreepJS reads the zone from a service worker first: the gap is structural and sits on the most-used probe path. Every replaced function would also have to pass about 50 lie probes in every realm. A MAIN-world script has no synchronous channel to `chrome.storage`, so the Selection would have to be baked into one packaged script per City (ruling out a per-install Jitter) or into `chrome.userScripts` code behind the "Allow User Scripts" toggle. Evidence: `docs/research/main-world-patching.md`.
+
+## Consequences
+
+- A time zone override belongs to a renderer process, and same-site tabs share processes by default, so an attached session does not prove a tab is Covered. Coverage runs a reconcile loop that re-sends the Override (brief, Behaviour decisions).
+- Cancelling the bar detaches every tab. Spoofer enters Paused and never re-attaches on its own.
+- Only four protocol methods are allowed; the brief names them and forbids the rest.
