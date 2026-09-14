@@ -86,6 +86,16 @@ const auditUrl = (origins: Origins): string =>
 
 async function collect(page: Page, origins: Origins): Promise<Report> {
   await page.goto(auditUrl(origins));
+  // The probes drop an 'at async' frame from a stack, and a guard keeps any frame that names the
+  // extension. A synthetic stack proves the guard holds, because a stack that lost such a frame
+  // would read the same in both reports and the diff would never show it.
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as { __probes: { normalise(text: string): string } }).__probes.normalise(
+        'Error: spoofer\n    at async chrome-extension://abcdef/dist/background.js:1:1',
+      ),
+    ),
+  ).toContain('at async chrome-extension://abcdef/dist/background.js');
   // A popup opens only from a real click, and this is the only one the Audit needs.
   await page.click('#open-popup');
   return page.evaluate(() => (window as unknown as { __audit: Promise<Report> }).__audit);

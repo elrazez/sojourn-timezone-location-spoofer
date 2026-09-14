@@ -40,14 +40,15 @@
   // Line and column numbers, blob ids and the server's port are different on every run and say
   // nothing about coverage, and an 'at async' frame names whoever awaited the probe, which is the
   // Audit page's own loop and is there or not depending on how long an earlier probe waited.
-  // Everything else in a stack, a chrome-extension:// frame above all, is left exactly as written.
+  // Everything else in a stack is left exactly as written, and a frame naming the extension is
+  // kept whatever else it says, because that frame is the Trace this file exists to catch.
   const normalise = (text) =>
     String(text)
       .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, 'UUID')
       .replace(/(localhost|127\.0\.0\.1):\d+/g, '$1')
       .replace(/:\d+:\d+(\)|$)/gm, '$1')
       .split('\n')
-      .filter((frame) => !/^\s*at async /.test(frame))
+      .filter((frame) => frame.includes('extension') || !/^\s*at async /.test(frame))
       .join('\n');
 
   // What the engine answered: the name of the error it threw, or that it threw nothing at all.
@@ -115,17 +116,23 @@
         ['timeZoneId', 'instant', 'plainDateISO', 'plainTimeISO', 'zonedDateTimeISO']],
     ];
     const members = [];
+    // Vector 25: an audited name whose descriptor holds a value that is not a function. No check
+    // below can see one, because every check calls the member, so it is recorded here instead.
+    const dataMembers = [];
     for (const [label, holder, names] of groups) {
       if (!holder) continue;
       for (const name of names) {
         const descriptor = Object.getOwnPropertyDescriptor(holder, name);
         if (!descriptor) continue;
         const fn = descriptor.get || descriptor.value;
-        if (typeof fn !== 'function') continue;
+        if (typeof fn !== 'function') {
+          dataMembers.push(`${label}.${name}:${typeof descriptor.value}[${flagsOf(descriptor)}]`);
+          continue;
+        }
         members.push({ label: `${label}.${name}`, holder, name, descriptor, fn });
       }
     }
-    return members;
+    return { members, dataMembers };
   }
 
   // The prototype of a function is put back whatever the probe did to it, so one probe cannot
@@ -214,7 +221,8 @@
         delete fn[''];
       }
     })],
-    ['25-descriptor-value', (m) => !m.descriptor.get && typeof m.descriptor.value !== 'function'],
+    // 25 is absent from this list: a member whose descriptor holds a value that is not a function
+    // never reaches a check that calls it, so it is read off the prototypes as lies.25 below.
     // 26 is every exception raised while probing, which the runner below records for any check.
     ['26-probe-threw', () => false],
   ];
@@ -226,7 +234,7 @@
   // Every member against every check, once, so the per-check and per-member views below are two
   // readings of one pass.
   function queryLies(s) {
-    const members = membersOf(s);
+    const { members, dataMembers } = membersOf(s);
     const scope = phantomScope(s);
     const toString = (scope && scope.Function && scope.Function.prototype.toString) || Function.prototype.toString;
     const byCheck = {};
@@ -239,7 +247,7 @@
         try {
           lied = check(member, toString);
         } catch (error) {
-          byCheck['26-probe-threw'].push(`${member.label}:${describe(error)}`);
+          byCheck['26-probe-threw'].push(`${member.label}:threw ${describe(error)}`);
           byMember[member.label].push('26-probe-threw');
           continue;
         }
@@ -250,7 +258,7 @@
         }
       }
     }
-    return { byCheck, byMember, scope, members: members.map((member) => member.label) };
+    return { byCheck, byMember, scope, dataMembers, members: members.map((member) => member.label) };
   }
 
   // CreepJS reads lies through an iframe inside an iframe, reached by indexed window access rather
@@ -280,6 +288,8 @@
       .map((label) => `${label}=[${byMember[label].join(' ')}]`)
       .join(' ') || 'no member';
 
+  const flagsOf = (d) => `${d.enumerable ? 'e' : ''}${d.configurable ? 'c' : ''}${d.writable ? 'w' : ''}`;
+
   // Every own property of a target with the shape of its descriptor, and for a function its source,
   // name, length and whether it carries a prototype.
   function shapeOf(target) {
@@ -288,7 +298,7 @@
       .sort()
       .map((name) => {
         const d = Object.getOwnPropertyDescriptor(target, name);
-        const flags = `${d.enumerable ? 'e' : ''}${d.configurable ? 'c' : ''}${d.writable ? 'w' : ''}`;
+        const flags = flagsOf(d);
         if (d.get || d.set) return `${name}:accessor[${flags}]${fnShape(d.get)}${fnShape(d.set)}`;
         return `${name}:${typeof d.value}[${flags}]${typeof d.value === 'function' ? fnShape(d.value) : ''}`;
       })
@@ -452,6 +462,10 @@
     const lies = queryLies(s);
     for (const [name] of CHECKS) put(`lies.${name}`, () => lies.byCheck[name].join(',') || 'none');
 
+    // How many audited members were read, and which of them hold a value that is not a function.
+    put('lies.25-descriptor-value', () =>
+      `checked=${lies.members.length + lies.dataMembers.length} ${lies.dataMembers.join(' ') || 'none'}`);
+
     // The vectors the research names, one probe each, named after the file that implements it.
     put('lies.27-phantom-realm', () =>
       lies.scope ? `reachable=true zone=${lies.scope.Intl.DateTimeFormat().resolvedOptions().timeZone}` : UNAVAILABLE);
@@ -575,5 +589,8 @@
     return report;
   }
 
+  // The runner asserts the 'at async' guard against a synthetic stack, which needs normalise
+  // itself. Hung off collect rather than on the scope, so no context gains a global name.
+  collect.normalise = normalise;
   globalThis.__probes = collect;
 })();
