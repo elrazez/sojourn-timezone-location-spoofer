@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Spoofer audit frame</title>
+<body>
+<p>Spoofer audit frame</p>
+<script src="probes.js"></script>
+<script>
+  // One context of the Audit: whatever the query says it is, reported to whoever opened it.
+  (() => {
+    const context = new URLSearchParams(location.search).get('context') || 'frame';
+    const target = window.opener || parent;
+    __probes(context).then((report) => target.postMessage({ spoofer: 'audit', context, report }, '*'));
+  })();
+</script>

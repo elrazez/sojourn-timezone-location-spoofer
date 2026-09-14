@@ -5,3 +5,4 @@ playwright-report/
 .scratch/
 *.zip
 .DS_Store
+test/audit/residuals.json

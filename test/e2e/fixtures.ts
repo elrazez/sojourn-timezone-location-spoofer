@@ -6,7 +6,8 @@
 //   extensionId  -> the id in the service worker's url
 //   spoofer      -> drives the extension's own Settings and reads the status Coverage exposes
 //   popup        -> popup.html open as a page, which is the only way a harness can reach it
-//   origins      -> test/pages served on two origins that Chrome treats as distinct sites
+//   disabled     -> a second browser with the extension loaded, for a run with it switched off
+//   origins      -> test/pages and test/audit served on two origins Chrome treats as distinct sites
 // The harness never passes --silent-debugger-extension-api and never uses Playwright's own time
 // zone or position emulation: the Baseline comes from the real browser or a green run proves
 // nothing. Geolocation permission is granted only through grantPermissions.
@@ -20,7 +21,7 @@ import {
   type Page,
   type Worker,
 } from '@playwright/test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -39,9 +40,11 @@ export const TOKYO_OFFSET = -540;
 
 const EXTENSION_PATH = fileURLToPath(new URL('../../extension', import.meta.url));
 const PAGES_PATH = fileURLToPath(new URL('../pages', import.meta.url));
+const AUDIT_PATH = fileURLToPath(new URL('../audit', import.meta.url));
 
-// What a page, frame or worker recorded in its first script.
-export type FirstReading = { zone: string; offset: number };
+// What a page, frame or worker recorded in its first script, and which one said it when more than
+// one kind reports to the same server.
+export type FirstReading = { zone: string; offset: number; where?: string };
 
 // Every geolocation call passes this, because a Chromium with no authorised location provider
 // neither resolves nor errors on its own: without it the Baseline call never comes back.
@@ -79,15 +82,21 @@ export type Spoofer = {
   status(): Promise<CoverageStatus>;
 };
 
-// readings holds what every record.html load reported from its first script, in order.
-export type Origins = { localhost: string; loopback: string; readings: FirstReading[] };
+// readings holds what every record.html load reported from its first script, in order, and
+// requests every url the server really answered, so a load served from the cache can be told from
+// one that went to the network.
+export type Origins = { localhost: string; loopback: string; readings: FirstReading[]; requests: string[] };
 
 export { expect };
+
+// A browser with the extension loaded, its service worker, and the handle onto its Settings.
+export type Loaded = { context: BrowserContext; worker: Worker; spoofer: Spoofer };
 
 export const test = base.extend<{
   extraArgs: string[];
   context: BrowserContext;
   baseline: BrowserContext;
+  disabled: Loaded;
   worker: Worker;
   extensionId: string;
   spoofer: Spoofer;
@@ -96,42 +105,30 @@ export const test = base.extend<{
 }>({
   extraArgs: [[], { option: true }],
   context: async ({ extraArgs }, use) => {
-    const browser = await launch([
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-      ...extraArgs,
-    ]);
+    const browser = await launchExtension(extraArgs);
     await use(browser.context);
     await browser.done();
   },
   // The same browser with nothing loaded into it: what a page does without Spoofer at all.
   baseline: async ({ extraArgs }, use) => {
-    const browser = await launch(extraArgs);
+    const browser = await launch(extraArgs, true);
     await use(browser.context);
     await browser.done();
   },
+  // A second browser with the extension in it, which the Audit switches off: the third run.
+  disabled: async ({ extraArgs }, use) => {
+    const browser = await launchExtension(extraArgs);
+    await use(browser);
+    await browser.done();
+  },
   worker: async ({ context }, use) => {
-    await use(context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker')));
+    await use(await workerOf(context));
   },
   extensionId: async ({ worker }, use) => {
     await use(new URL(worker.url()).host);
   },
   spoofer: async ({ worker }, use) => {
-    await use({
-      // The Selection comes back out of storage, not out of the call, so a test compares a page
-      // against what the extension stored rather than against what one function returned.
-      select: async (cityId) => {
-        await worker.evaluate((id) => (globalThis as unknown as SpooferWorker).spoofer.selectCity(id), cityId);
-        return worker.evaluate(async () => (await chrome.storage.local.get('selection')).selection as Selection);
-      },
-      clear: async () => {
-        await worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.clearSelection());
-      },
-      enable: async (enabled) => {
-        await worker.evaluate((on) => (globalThis as unknown as SpooferWorker).spoofer.setEnabled(on), enabled);
-      },
-      status: () => worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.status()),
-    });
+    await use(spooferOf(worker));
   },
   // A tab of its own, because a harness cannot click the toolbar icon. It is a tab like any other
   // as far as Coverage is concerned, which is why the slices that count tabs account for it.
@@ -142,36 +139,88 @@ export const test = base.extend<{
   },
   origins: async ({}, use) => {
     const readings: FirstReading[] = [];
+    const requests: string[] = [];
     const server = createServer((request, response) => {
-      const asked = new URL(request.url ?? '/', 'http://pages');
+      const asked = new URL(request.url ?? '/', `http://${request.headers.host}`);
+      requests.push(asked.href);
       if (asked.pathname === '/record') {
         readings.push({
           zone: asked.searchParams.get('zone') ?? '',
           offset: Number(asked.searchParams.get('offset')),
+          ...(asked.searchParams.has('where') ? { where: asked.searchParams.get('where') as string } : {}),
         });
         response.writeHead(204);
         response.end();
         return;
       }
       const name = basename(asked.pathname) || 'index.html';
-      readFile(join(PAGES_PATH, name)).then(
-        (body) => {
-          response.writeHead(200, { 'content-type': contentType(name) });
-          response.end(body);
-        },
-        () => {
-          response.writeHead(404);
-          response.end();
-        },
-      );
+      // Two query parameters the Audit's residual measurements need: how long the server holds the
+      // answer, and how long the browser may keep it.
+      const latency = Number(asked.searchParams.get('latency') ?? 0);
+      const cache = asked.searchParams.get('cache');
+      readFile(join(AUDIT_PATH, name))
+        .catch(() => readFile(join(PAGES_PATH, name)))
+        .then(
+          (body) => {
+            setTimeout(() => {
+              response.writeHead(200, {
+                'content-type': contentType(name),
+                ...(cache === null ? {} : { 'cache-control': `max-age=${cache}` }),
+              });
+              response.end(body);
+            }, latency);
+          },
+          () => {
+            response.writeHead(404);
+            response.end();
+          },
+        );
     });
+    // Both directories are served flat under one origin, so a name in both would silently shadow.
+    const [audit, pages] = await Promise.all([readdir(AUDIT_PATH), readdir(PAGES_PATH)]);
+    const shadowed = audit.filter((name) => pages.includes(name));
+    if (shadowed.length > 0) throw new Error(`test/audit and test/pages both hold ${shadowed.join(', ')}`);
     await listen(server);
     const { port } = server.address() as AddressInfo;
-    await use({ localhost: `http://localhost:${port}/`, loopback: `http://127.0.0.1:${port}/`, readings });
+    await use({ localhost: `http://localhost:${port}/`, loopback: `http://127.0.0.1:${port}/`, readings, requests });
     server.closeAllConnections();
     await new Promise((done) => server.close(done));
   },
 });
+
+// A browser with the extension loaded, headless unless a measurement needs the window furniture.
+export async function launchExtension(
+  args: string[] = [],
+  headless = true,
+): Promise<Loaded & { done: () => Promise<void> }> {
+  const browser = await launch(
+    [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`, ...args],
+    headless,
+  );
+  const worker = await workerOf(browser.context);
+  return { context: browser.context, worker, spoofer: spooferOf(worker), done: browser.done };
+}
+
+const workerOf = async (context: BrowserContext): Promise<Worker> =>
+  context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+
+function spooferOf(worker: Worker): Spoofer {
+  return {
+    // The Selection comes back out of storage, not out of the call, so a test compares a page
+    // against what the extension stored rather than against what one function returned.
+    select: async (cityId) => {
+      await worker.evaluate((id) => (globalThis as unknown as SpooferWorker).spoofer.selectCity(id), cityId);
+      return worker.evaluate(async () => (await chrome.storage.local.get('selection')).selection as Selection);
+    },
+    clear: async () => {
+      await worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.clearSelection());
+    },
+    enable: async (enabled) => {
+      await worker.evaluate((on) => (globalThis as unknown as SpooferWorker).spoofer.setEnabled(on), enabled);
+    },
+    status: () => worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.status()),
+  };
+}
 
 
 
@@ -254,11 +303,16 @@ export function getPosition(where: Page | Frame): Promise<PositionReading> {
   );
 }
 
-async function launch(args: string[]): Promise<{ context: BrowserContext; done: () => Promise<void> }> {
+async function launch(
+  args: string[],
+  headless = true,
+): Promise<{ context: BrowserContext; done: () => Promise<void> }> {
   const userDataDir = await mkdtemp(join(tmpdir(), 'spoofer-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
     args,
+    headless,
+    ...(headless ? {} : { viewport: null }),
     env: { ...process.env, TZ: BASELINE_ZONE },
   });
   return {

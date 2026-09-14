@@ -75,3 +75,11 @@ _Avoid_: leak test, detection test
 **Baseline**:
 The Audit's report from a browser without the extension.
 _Avoid_: control, reference run
+
+**Probe**:
+One named reading the Audit takes, carried under the same name in every Context of both reports, so a value that moved can be named.
+_Avoid_: check, vector, assertion
+
+**Context**:
+One JavaScript global the Audit reads its Probes in: the page, a frame, a worker, or a window a page opened. A Context that cannot be created reads `unavailable` rather than going unreported.
+_Avoid_: realm, scope, environment
