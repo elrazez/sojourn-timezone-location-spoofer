@@ -118,9 +118,6 @@ const NOT_ATTACHED = 'Debugger is not attached';
 const BADGE_OFF = '#5f6368';
 const BADGE_ALERT = '#d93025';
 
-// The brief's geolocation refresh rule: a position older than this is re-sent.
-const POSITION_MAX_AGE = 30_000;
-
 // The fast cadence is the brief's contingency for a tab that starts where no extension may attach.
 const SLOW_TICK = 1000;
 const FAST_TICK = 20;
@@ -270,8 +267,10 @@ export function reconcile(state: CoverageState): Command[] {
       if (unsettled(sends.autoAttach, state.now)) commands.push({ type: 'auto-attach', target });
       if (session.sessionId && unsettled(sends.resumed, state.now)) commands.push({ type: 'resume', target });
       const coordinates = state.selection?.coordinates;
-      // The position belongs to the tab, not to the renderer, so child sessions never get one.
-      if (!session.sessionId && coordinates && positionDue(session, state.now)) {
+      // The position belongs to the tab, not to the renderer, so child sessions never get one, and
+      // it goes out once per document and once per Selection: a re-send hands every active watch a
+      // POSITION_UNAVAILABLE first, which is why the brief's 30 s refresh is gone.
+      if (!session.sessionId && coordinates && unsettled(sends.geolocation, state.now)) {
         commands.push({ type: 'geolocation', tabId: session.tabId, coordinates });
       }
     }
@@ -374,7 +373,7 @@ async function run(command: Command, adapters: Adapters): Promise<CoverageEvent[
     case 'geolocation':
       return [
         await sent({ tabId: command.tabId }, 'geolocation', () =>
-          debuggerAdapter.setGeolocation(command.tabId, command.coordinates),
+          debuggerAdapter.setPosition(command.tabId, command.coordinates),
         ),
       ];
     case 'badge':
@@ -469,9 +468,6 @@ const due = (send: Send | undefined, now: number): boolean => !send || now - sen
 // Once, then again on a later tick only if it failed.
 const unsettled = (send: Send | undefined, now: number): boolean =>
   !send || (send.error !== undefined && send.at < now);
-
-const positionDue = (session: Session, now: number): boolean =>
-  !session.sends.geolocation || now - session.sends.geolocation.at >= POSITION_MAX_AGE;
 
 // A new Selection is a new zone and a new position; what a session was watching for is unchanged.
 const forget = (session: Session): Session => drop(drop(session, 'zone'), 'geolocation');

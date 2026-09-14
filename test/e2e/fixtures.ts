@@ -1,18 +1,21 @@
 // Interface: the browser seam. Every e2e test takes these fixtures and nothing else.
 //   context      -> a persistent Chromium with extension/ loaded and TZ pinned to the Baseline zone
+//   baseline     -> the same Chromium without the extension, for what an unmodified browser does
 //   extraArgs    -> switches this test's Chromium needs, set with test.use
 //   worker       -> the extension's service worker, once it has started
 //   extensionId  -> the id in the service worker's url
 //   spoofer      -> drives the extension's own Settings and reads the status Coverage exposes
 //   origins      -> test/pages served on two origins that Chrome treats as distinct sites
-// The harness never passes --silent-debugger-extension-api, timezoneId, geolocation, or
-// setGeolocation: the Baseline has to come from the real browser or a green run proves nothing.
+// The harness never passes --silent-debugger-extension-api and never uses Playwright's own time
+// zone or position emulation: the Baseline comes from the real browser or a green run proves
+// nothing. Geolocation permission is granted only through grantPermissions.
 
 import {
   chromium,
   expect,
   test as base,
   type BrowserContext,
+  type Frame,
   type Page,
   type Worker,
 } from '@playwright/test';
@@ -23,6 +26,7 @@ import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CoverageStatus } from '../../src/coverage.js';
+import type { Selection } from '../../src/settings.js';
 
 // A zone with no DST at offset -840, which no Catalog City uses, so a UTC host cannot fake a pass.
 export const BASELINE_ZONE = 'Pacific/Kiritimati';
@@ -38,9 +42,29 @@ const PAGES_PATH = fileURLToPath(new URL('../pages', import.meta.url));
 // What a page, frame or worker recorded in its first script.
 export type FirstReading = { zone: string; offset: number };
 
+// Every geolocation call passes this, because a Chromium with no authorised location provider
+// neither resolves nor errors on its own: without it the Baseline call never comes back.
+export const GEOLOCATION_TIMEOUT = 5000;
+
+// What one getCurrentPosition call answered, flattened so it survives the trip out of the page.
+export type PositionReading =
+  | {
+      ok: true;
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+      altitude: number | null;
+      altitudeAccuracy: number | null;
+      heading: number | null;
+      speed: number | null;
+      timestamp: number;
+      age: number;
+    }
+  | { ok: false; code: number; message: string };
+
 type SpooferWorker = {
   spoofer: {
-    selectCity(cityId: string): Promise<unknown>;
+    selectCity(cityId: string): Promise<Selection>;
     clearSelection(): Promise<void>;
     setEnabled(enabled: boolean): Promise<void>;
     status(): CoverageStatus;
@@ -48,7 +72,7 @@ type SpooferWorker = {
 };
 
 export type Spoofer = {
-  select(cityId: string): Promise<void>;
+  select(cityId: string): Promise<Selection>;
   clear(): Promise<void>;
   enable(enabled: boolean): Promise<void>;
   status(): Promise<CoverageStatus>;
@@ -62,6 +86,7 @@ export { expect };
 export const test = base.extend<{
   extraArgs: string[];
   context: BrowserContext;
+  baseline: BrowserContext;
   worker: Worker;
   extensionId: string;
   spoofer: Spoofer;
@@ -69,19 +94,19 @@ export const test = base.extend<{
 }>({
   extraArgs: [[], { option: true }],
   context: async ({ extraArgs }, use) => {
-    const userDataDir = await mkdtemp(join(tmpdir(), 'spoofer-'));
-    const context = await chromium.launchPersistentContext(userDataDir, {
-      channel: 'chromium',
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        ...extraArgs,
-      ],
-      env: { ...process.env, TZ: BASELINE_ZONE },
-    });
-    await use(context);
-    await context.close();
-    await rm(userDataDir, { recursive: true, force: true });
+    const browser = await launch([
+      `--disable-extensions-except=${EXTENSION_PATH}`,
+      `--load-extension=${EXTENSION_PATH}`,
+      ...extraArgs,
+    ]);
+    await use(browser.context);
+    await browser.done();
+  },
+  // The same browser with nothing loaded into it: what a page does without Spoofer at all.
+  baseline: async ({ extraArgs }, use) => {
+    const browser = await launch(extraArgs);
+    await use(browser.context);
+    await browser.done();
   },
   worker: async ({ context }, use) => {
     await use(context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker')));
@@ -91,8 +116,11 @@ export const test = base.extend<{
   },
   spoofer: async ({ worker }, use) => {
     await use({
+      // The Selection comes back out of storage, not out of the call, so a test compares a page
+      // against what the extension stored rather than against what one function returned.
       select: async (cityId) => {
         await worker.evaluate((id) => (globalThis as unknown as SpooferWorker).spoofer.selectCity(id), cityId);
+        return worker.evaluate(async () => (await chrome.storage.local.get('selection')).selection as Selection);
       },
       clear: async () => {
         await worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.clearSelection());
@@ -188,6 +216,49 @@ export function readOffset(page: Page): Promise<number> {
 // What the page recorded in the inline script at the top of its head.
 export function readFirst(page: Page): Promise<FirstReading> {
   return page.evaluate(() => (window as unknown as { __first: FirstReading }).__first);
+}
+
+// One getCurrentPosition call in a page or a frame, with the timeout every call in this suite uses.
+export function getPosition(where: Page | Frame): Promise<PositionReading> {
+  return where.evaluate(
+    (timeout) =>
+      new Promise<PositionReading>((done) => {
+        navigator.geolocation.getCurrentPosition(
+          (position) =>
+            done({
+              ok: true,
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              altitude: position.coords.altitude,
+              altitudeAccuracy: position.coords.altitudeAccuracy,
+              heading: position.coords.heading,
+              speed: position.coords.speed,
+              timestamp: position.timestamp,
+              age: Date.now() - position.timestamp,
+            }),
+          (error) => done({ ok: false, code: error.code, message: error.message }),
+          { timeout },
+        );
+      }),
+    GEOLOCATION_TIMEOUT,
+  );
+}
+
+async function launch(args: string[]): Promise<{ context: BrowserContext; done: () => Promise<void> }> {
+  const userDataDir = await mkdtemp(join(tmpdir(), 'spoofer-'));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: 'chromium',
+    args,
+    env: { ...process.env, TZ: BASELINE_ZONE },
+  });
+  return {
+    context,
+    done: async () => {
+      await context.close();
+      await rm(userDataDir, { recursive: true, force: true });
+    },
+  };
 }
 
 function contentType(name: string): string {

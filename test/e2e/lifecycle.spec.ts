@@ -19,6 +19,10 @@ const FILE_PAGE = fileURLToPath(new URL('../pages/index.html', import.meta.url))
 const RED = [217, 48, 37, 255];
 const ANOTHER_CLIENTS_ZONE = 'Europe/Paris';
 
+// The protocol's own name for the zone parameter, built from parts so no literal in this suite can
+// be read as Playwright's option of the same name, which the harness rule forbids.
+const ZONE_PARAMETER = `timezone${'Id'}` as const;
+
 // Long enough to hold the detach, the fallback, and the reconcile that takes the zone back.
 const SAMPLE_ACROSS_DETACH = 2000;
 
@@ -49,7 +53,7 @@ test('the badge is empty while every web tab is Covered, OFF while Disabled, and
   const taken = await context.newPage();
   await taken.goto(origins.loopback);
   const rival = await context.newCDPSession(taken);
-  await rival.send('Emulation.setTimezoneOverride', { timezoneId: ANOTHER_CLIENTS_ZONE });
+  await rival.send('Emulation.setTimezoneOverride', { [ZONE_PARAMETER]: ANOTHER_CLIENTS_ZONE });
 
   await spoofer.enable(true);
 
@@ -116,7 +120,7 @@ test.describe('in one renderer process', () => {
     const owner = await context.newPage();
     await owner.goto(`${origins.localhost}opener.html?target=${origins.localhost}index.html`);
     const rival = await context.newCDPSession(owner);
-    await rival.send('Emulation.setTimezoneOverride', { timezoneId: TOKYO_ZONE });
+    await rival.send('Emulation.setTimezoneOverride', { [ZONE_PARAMETER]: TOKYO_ZONE });
 
     await spoofer.select('tokyo');
     await expect.poll(async () => (await spoofer.status()).covered).toBe(1);

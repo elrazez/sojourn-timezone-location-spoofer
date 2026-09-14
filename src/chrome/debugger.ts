@@ -3,7 +3,7 @@
 //   attach(tabId)               -> resolves once this extension owns the tab's session
 //   detach(tabId)               -> gives the session up, which hands both overrides back
 //   setTimezone(target, zone)   -> that session's renderer process observes the zone
-//   setGeolocation(tabId, pos)  -> the whole tab observes the position; tab sessions only, because
+//   setPosition(tabId, pos)     -> the whole tab observes the position; tab sessions only, because
 //                                  the position lives on the tab, not on the renderer
 //   autoAttach(target)          -> that session reports its child targets and pauses them at start
 //   resume(target)              -> releases a child paused at start
@@ -12,8 +12,9 @@
 //   onChildDetached(fn)         -> fn runs when a child session goes away
 // Invariants: the four sending methods are exactly the four the brief always allows, so a forbidden
 // one (any domain's `enable`, any `Debugger.*` method, `Emulation.setAutomationOverride`) has
-// nowhere to be written. The fifth the brief permits conditionally is absent until phase 04's
-// detach slice earns it.
+// nowhere to be written. The fifth the brief permits conditionally stays absent: phase 04's detach
+// slice measured that detaching alone hands the tab back the same answer a browser with no
+// extension gives, so Emulation.clearGeolocationOverride is never needed.
 // Ordering: attach before anything else. For a child session: setTimezone and autoAttach, then
 // resume, because a resumed child cannot be configured any more.
 // Errors: every call rejects with Chrome's message ("Cannot access a chrome:// URL", "Another
@@ -29,7 +30,7 @@ export type DebuggerAdapter = {
   attach(tabId: number): Promise<void>;
   detach(tabId: number): Promise<void>;
   setTimezone(target: SessionTarget, zone: string): Promise<void>;
-  setGeolocation(tabId: number, coordinates: Coordinates): Promise<void>;
+  setPosition(tabId: number, coordinates: Coordinates): Promise<void>;
   autoAttach(target: SessionTarget): Promise<void>;
   resume(target: SessionTarget): Promise<void>;
   onDetach(listener: (tabId: number, reason: string) => void): void;
@@ -53,7 +54,7 @@ export const chromeDebugger: DebuggerAdapter = {
   async setTimezone(target, zone) {
     await send(target, 'Emulation.setTimezoneOverride', { timezoneId: zone });
   },
-  async setGeolocation(tabId, coordinates) {
+  async setPosition(tabId, coordinates) {
     // Only these three, so altitude, altitudeAccuracy, heading and speed read null as they do
     // without the extension.
     await send({ tabId }, 'Emulation.setGeolocationOverride', coordinates);

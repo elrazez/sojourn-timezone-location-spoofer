@@ -13,7 +13,7 @@ The static list of Cities bundled with the extension.
 _Avoid_: database, city list, dataset
 
 **Selection**:
-The City the user chose plus the Jitter and Accuracy generated for it. There is at most one Selection.
+The City the user chose plus the Jitter and Accuracy generated for it. There is at most one Selection, and it always carries both: a Selection without them would leave a tab reporting its real position while the popup said it was covered.
 _Avoid_: profile, persona, config
 
 **Jitter**:

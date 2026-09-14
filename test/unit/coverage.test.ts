@@ -8,6 +8,10 @@ import { world, type WorldOptions } from './fakes.js';
 // Tokyo is UTC+9 all year; the Catalog is the real one, so this is the zone a page reads back.
 const TOKYO = 'Asia/Tokyo';
 const LOS_ANGELES = 'America/Los_Angeles';
+
+// A Selection always carries the point a page reads, so every Selection written here carries one.
+const NEAR_TOKYO = { latitude: 35.68, longitude: 139.65, accuracy: 42 };
+const NEAR_LOS_ANGELES = { latitude: 34.05, longitude: -118.24, accuracy: 55 };
 const ALERT = '#d93025';
 const OFF = '#5f6368';
 
@@ -19,7 +23,7 @@ const started = (options: WorldOptions) => {
 
 const covering = (cityId: string, tabIds: number[], options: WorldOptions = {}) =>
   started({
-    stored: { selection: { cityId }, enabled: true, ...options.stored },
+    stored: { selection: { cityId, coordinates: NEAR_TOKYO }, enabled: true, ...options.stored },
     tabs: tabIds.map((id) => ({ id, loading: false })),
     ...options,
   });
@@ -33,6 +37,7 @@ test('scenario 1: the happy path covers the tab, then its frame and its worker',
     { type: 'attach', tabId: 1 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
     { type: 'badge', text: '', color: ALERT },
   ]);
   expect(it.status().covered).toBe(1);
@@ -132,15 +137,17 @@ test('scenario 2: Cancel pauses every tab, and only Resume brings them back', as
     { type: 'attach', tabId: 2 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
     { type: 'zone', target: { tabId: 2 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 2 } },
+    { type: 'geolocation', tabId: 2, coordinates: NEAR_TOKYO },
     { type: 'badge', text: '', color: ALERT },
     { type: 'remember-paused', paused: false },
   ]);
   expect(it.status().covered).toBe(2);
   // Paused belongs to the session area, which a browser restart clears, and the Selection to local.
   expect(it.areas()).toEqual({
-    local: { selection: { cityId: 'tokyo' }, enabled: true },
+    local: { selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: true },
     session: { paused: false },
   });
 });
@@ -149,7 +156,7 @@ test('scenario 3: Disabled detaches all three tabs, Enabled covers them again', 
   const it = covering('tokyo', [1, 2, 3]);
   await it.settle();
 
-  it.apply({ type: 'derived', selection: { cityId: 'tokyo' }, enabled: false, paused: false, tabs: tabs([1, 2, 3]) });
+  it.apply({ type: 'derived', selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: false, paused: false, tabs: tabs([1, 2, 3]) });
   expect(await it.settle()).toEqual([
     { type: 'detach', tabId: 1 },
     { type: 'detach', tabId: 2 },
@@ -158,17 +165,20 @@ test('scenario 3: Disabled detaches all three tabs, Enabled covers them again', 
   ]);
   expect(it.status().covered).toBe(0);
 
-  it.apply({ type: 'derived', selection: { cityId: 'tokyo' }, enabled: true, paused: false, tabs: tabs([1, 2, 3]) });
+  it.apply({ type: 'derived', selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: true, paused: false, tabs: tabs([1, 2, 3]) });
   expect(await it.settle()).toEqual([
     { type: 'attach', tabId: 1 },
     { type: 'attach', tabId: 2 },
     { type: 'attach', tabId: 3 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
     { type: 'zone', target: { tabId: 2 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 2 } },
+    { type: 'geolocation', tabId: 2, coordinates: NEAR_TOKYO },
     { type: 'zone', target: { tabId: 3 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 3 } },
+    { type: 'geolocation', tabId: 3, coordinates: NEAR_TOKYO },
     { type: 'badge', text: '', color: ALERT },
   ]);
   expect(it.status().covered).toBe(3);
@@ -187,8 +197,10 @@ test('scenario 5: a worker restart finds the sessions it already holds and keeps
     { type: 'attach', tabId: 2 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
     { type: 'zone', target: { tabId: 2 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 2 } },
+    { type: 'geolocation', tabId: 2, coordinates: NEAR_TOKYO },
     { type: 'badge', text: '', color: ALERT },
   ]);
   expect(it.status().covered).toBe(2);
@@ -209,6 +221,7 @@ test('a tab another client held at worker start is attached again once that clie
     { type: 'attach', tabId: 1 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
     { type: 'badge', text: '1', color: ALERT },
   ]);
   expect(it.status().notCovered).toEqual([
@@ -224,6 +237,7 @@ test('a tab another client held at worker start is attached again once that clie
     { type: 'attach', tabId: 1 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
     { type: 'badge', text: '', color: ALERT },
   ]);
   expect(it.status().covered).toBe(1);
@@ -235,12 +249,15 @@ test('scenario 4: a City change that clashes in a shared renderer lands on the n
 
   // Tab 2 does not hold its renderer's zone, so Chrome refuses it until the holder has moved.
   it.refuse({ command: 'zone', tabId: 2, error: 'Timezone override is already in effect' });
-  it.apply({ type: 'derived', selection: { cityId: 'los-angeles' }, enabled: true, paused: false, tabs: tabs([1, 2, 3]) });
+  it.apply({ type: 'derived', selection: { cityId: 'los-angeles', coordinates: NEAR_LOS_ANGELES }, enabled: true, paused: false, tabs: tabs([1, 2, 3]) });
 
   expect(await it.settle()).toEqual([
     { type: 'zone', target: { tabId: 1 }, zone: LOS_ANGELES },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_LOS_ANGELES },
     { type: 'zone', target: { tabId: 2 }, zone: LOS_ANGELES },
+    { type: 'geolocation', tabId: 2, coordinates: NEAR_LOS_ANGELES },
     { type: 'zone', target: { tabId: 3 }, zone: LOS_ANGELES },
+    { type: 'geolocation', tabId: 3, coordinates: NEAR_LOS_ANGELES },
     { type: 'badge', text: '1', color: ALERT },
   ]);
   expect(it.status().notCovered).toEqual([{ tabId: 2, reason: 'Timezone override is already in effect' }]);
@@ -296,6 +313,7 @@ test('scenario 9: a tab that navigates somewhere forbidden is Restricted, and co
     { type: 'attach', tabId: 1 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
   ]);
   expect(it.status().covered).toBe(1);
 });
@@ -313,7 +331,7 @@ test('a file page that cannot be attached counts on the badge once it has finish
 });
 
 test('a tab that is still loading is Pending, never counted against Spoofer', async () => {
-  const it = started({ stored: { selection: { cityId: 'tokyo' }, enabled: true }, tabs: [{ id: 1, loading: true }] });
+  const it = started({ stored: { selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: true }, tabs: [{ id: 1, loading: true }] });
   it.refuse({ command: 'attach', error: 'Cannot attach to this target.' });
   await it.settle();
 
@@ -338,15 +356,16 @@ test('switching Enabled back on is the other way out of Paused', async () => {
   expect(it.status().paused).toBe(true);
 
   // Paused was written down, so it comes back on every read until the switch clears it.
-  it.apply({ type: 'derived', selection: { cityId: 'tokyo' }, enabled: false, paused: true, tabs: tabs([1]) });
+  it.apply({ type: 'derived', selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: false, paused: true, tabs: tabs([1]) });
   expect(it.status().paused).toBe(true);
 
-  it.apply({ type: 'derived', selection: { cityId: 'tokyo' }, enabled: true, paused: true, tabs: tabs([1]) });
+  it.apply({ type: 'derived', selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: true, paused: true, tabs: tabs([1]) });
   expect(it.status().paused).toBe(false);
   expect(await it.settle()).toEqual([
     { type: 'attach', tabId: 1 },
     { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
     { type: 'auto-attach', target: { tabId: 1 } },
+    { type: 'geolocation', tabId: 1, coordinates: NEAR_TOKYO },
     { type: 'badge', text: '', color: ALERT },
     { type: 'remember-paused', paused: false },
   ]);
@@ -367,7 +386,7 @@ function tabs(ids: number[]) {
   return ids.map((id) => ({ id, loading: false }));
 }
 
-test('the position goes to the tab and not to the contexts inside it, and refreshes on the refresh rule', async () => {
+test('the position goes to the tab and not to the contexts inside it, and stands until the document does not', async () => {
   const near = { latitude: 35.68, longitude: 139.65, accuracy: 42 };
   const it = started({
     stored: { selection: { cityId: 'tokyo', coordinates: near }, enabled: true },
@@ -393,7 +412,20 @@ test('the position goes to the tab and not to the contexts inside it, and refres
     { type: 'zone', target: { tabId: 1, sessionId: 'frame' }, zone: TOKYO },
   ]);
 
+  // Half a minute on it is still the position the document was given: a re-send hands every active
+  // watch a POSITION_UNAVAILABLE first, which is the Trace the brief's contingency chose against.
   it.apply({ type: 'tick', now: 31_000 });
+  expect(await it.settle()).toEqual([
+    { type: 'zone', target: { tabId: 1 }, zone: TOKYO },
+    { type: 'zone', target: { tabId: 1, sessionId: 'frame' }, zone: TOKYO },
+  ]);
+
+  // A refused position is the one thing a tick still re-sends, because the tab has none.
+  it.refuse({ command: 'geolocation', error: 'Invalid geolocation' });
+  it.apply({ type: 'tab-status', tabId: 1, loading: true });
+  await it.settle();
+  it.allow('geolocation');
+  it.apply({ type: 'tick', now: 32_000 });
   expect(await it.settle()).toContainEqual({ type: 'geolocation', tabId: 1, coordinates: near });
 });
 
