@@ -1,0 +1,121 @@
+/* One accent, the system font, no icons: the popup is a list and five lines of text. The alert red
+   is not a second accent, it is the same red the badge uses for a tab that is Not Covered. */
+:root {
+  --accent: #1a73e8;
+  --ink: #202124;
+  --quiet: #5f6368;
+  --line: #dadce0;
+  --alert: #d93025;
+}
+
+body {
+  width: 280px;
+  margin: 0;
+  padding: 12px;
+  color: var(--ink);
+  font: 13px/1.45 system-ui, sans-serif;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--quiet);
+}
+
+label[for='search'] {
+  display: block;
+  margin-bottom: 4px;
+}
+
+#search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: inherit;
+}
+
+#search:focus-visible,
+button:focus-visible,
+#enabled:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#results {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+#results button {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#results button:hover {
+  background: #f1f3f4;
+}
+
+p {
+  margin: 8px 0 0;
+}
+
+.selection {
+  font-weight: 600;
+}
+
+.quiet {
+  color: var(--quiet);
+}
+
+.alert {
+  color: var(--alert);
+}
+
+.paused {
+  margin-top: 8px;
+  padding: 8px;
+  border-left: 3px solid var(--accent);
+  background: #f1f3f4;
+}
+
+.paused p {
+  margin: 0 0 8px;
+}
+
+#resume {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.switch {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+#enabled {
+  accent-color: var(--accent);
+  margin: 0;
+}

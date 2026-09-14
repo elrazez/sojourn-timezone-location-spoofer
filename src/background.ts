@@ -9,6 +9,7 @@
 
 import { chromeAction } from './chrome/action.js';
 import { chromeDebugger } from './chrome/debugger.js';
+import { chromeMessaging, type Request } from './chrome/messaging.js';
 import { chromeSession, chromeStorage } from './chrome/storage.js';
 import { chromeTabs } from './chrome/tabs.js';
 import { NO_COVERAGE, nextTick, reduce, settle, status, type Adapters, type CoverageEvent } from './coverage.js';
@@ -48,6 +49,32 @@ chromeDebugger.onDetach((tabId, reason) => void dispatch({ type: 'detached', tab
 chromeDebugger.onChildAttached((tabId, sessionId) => void dispatch({ type: 'child-attached', tabId, sessionId }));
 chromeDebugger.onChildDetached((tabId, sessionId) => void dispatch({ type: 'child-detached', tabId, sessionId }));
 
+// The popup's one channel in. Every request is answered with the status the request produced, never
+// the one before it, so the popup never paints a stale count over a change the user just made.
+chromeMessaging.onAsk(async (request) => {
+  await act(request);
+  return status(state);
+});
+
+async function act(request: Request): Promise<void> {
+  switch (request.type) {
+    case 'status':
+      return;
+    case 'resume':
+      // One message in, and the Coverage reducer does the rest: attach, both Overrides, the badge.
+      return dispatch({ type: 'resumed' });
+    case 'select':
+      await selectCity(chromeStorage, request.cityId);
+      break;
+    case 'enable':
+      await setEnabled(chromeStorage, request.enabled);
+      break;
+  }
+  // The storage listener hears this write too; dispatching here is what makes the answer the new
+  // status rather than a race with it.
+  await dispatch({ type: 'settings-changed' });
+}
+
 // ponytail: a 1 s poll is the whole retry policy, so a failed send or a renderer that lost its
 // override to a closing tab is real for up to 1 s; upgrade path is signal-driven bursts.
 function tick(): void {
@@ -58,7 +85,8 @@ setTimeout(tick, 1000);
 void dispatch({ type: 'settings-changed' });
 
 // A service worker global is reachable only by an extension context, never by a page.
-// ponytail: the e2e fixture's only way in, so it ships; drop it once the popup can drive Settings.
+// ponytail: the harness's way to drive Settings without opening the popup, which is what keeps the
+// time zone and geolocation suites off the user interface; drop it if those ever drive the popup.
 Object.assign(globalThis, {
   spoofer: {
     selectCity: (cityId: string) => selectCity(chromeStorage, cityId),

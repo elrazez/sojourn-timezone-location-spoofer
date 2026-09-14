@@ -49,12 +49,16 @@ The state after the user dismisses Chrome's debugging bar: no tab is Covered unt
 _Avoid_: stopped, suspended, cancelled
 
 **Enabled**:
-The user-set switch. Disabled means every tab observes real values and the badge says so.
+The user-set switch. Disabled means every tab observes real values and the badge says so. The Badge and the Popup write that state `Off`, which names what the Override is doing and is not a second name for the switch.
 _Avoid_: active, on/off, running
 
 **Badge**:
 The text Chrome shows on Spoofer's toolbar icon: `OFF` when the Override is off, the number of Not Covered tabs in red when there are any, and nothing at all otherwise.
 _Avoid_: counter, indicator, icon
+
+**Popup**:
+Spoofer's one screen: a search over the Catalog, the Selection, the Enabled switch, what is Covered, and the Paused notice with its Resume. A window a page opened for itself is not this, even where the brief calls that a popup too.
+_Avoid_: panel, dialog, options page
 
 **Trace**:
 Any observable difference between a covered page and the same page in an unmodified browser, other than the Override itself.

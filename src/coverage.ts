@@ -90,7 +90,8 @@ export type Adapters = {
 export type CoverageStatus = {
   enabled: boolean;
   paused: boolean;
-  selected: boolean;
+  // The City the Selection names, which is what the popup shows; null is a fresh install.
+  cityId: string | null;
   covered: number;
   pending: number;
   restricted: number;
@@ -309,7 +310,7 @@ export function status(state: CoverageState): CoverageStatus {
   return {
     enabled: state.enabled,
     paused: state.paused,
-    selected: state.selection !== null,
+    cityId: state.selection?.cityId ?? null,
     covered: tabs.filter((tab) => tab.status === 'covered').length,
     pending: tabs.filter((tab) => tab.status === 'pending').length,
     restricted: tabs.filter((tab) => tab.status === 'restricted').length,

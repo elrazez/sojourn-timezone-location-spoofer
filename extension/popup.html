@@ -1,3 +1,22 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Spoofer</title>
+<link rel="stylesheet" href="popup.css">
+<h1>Spoofer</h1>
+<label for="search">Search Cities</label>
+<input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Tokyo">
+<ul id="results"></ul>
+<p id="empty" class="quiet" hidden>No City matches that.</p>
+<p id="selection" class="selection" hidden></p>
+<p id="state"></p>
+<p id="not-covered" class="alert" hidden></p>
+<p id="restricted" class="quiet" hidden></p>
+<div id="paused" class="paused" hidden>
+  <p>Resume covers your tabs again and shows Chrome's debugging bar again.</p>
+  <button id="resume" type="button">Resume</button>
+</div>
+<p class="switch">
+  <input id="enabled" type="checkbox">
+  <label for="enabled">Enabled</label>
+</p>
+<script type="module" src="dist/popup.js"></script>

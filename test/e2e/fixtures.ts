@@ -5,6 +5,7 @@
 //   worker       -> the extension's service worker, once it has started
 //   extensionId  -> the id in the service worker's url
 //   spoofer      -> drives the extension's own Settings and reads the status Coverage exposes
+//   popup        -> popup.html open as a page, which is the only way a harness can reach it
 //   origins      -> test/pages served on two origins that Chrome treats as distinct sites
 // The harness never passes --silent-debugger-extension-api and never uses Playwright's own time
 // zone or position emulation: the Baseline comes from the real browser or a green run proves
@@ -90,6 +91,7 @@ export const test = base.extend<{
   worker: Worker;
   extensionId: string;
   spoofer: Spoofer;
+  popup: Page;
   origins: Origins;
 }>({
   extraArgs: [[], { option: true }],
@@ -130,6 +132,13 @@ export const test = base.extend<{
       },
       status: () => worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.status()),
     });
+  },
+  // A tab of its own, because a harness cannot click the toolbar icon. It is a tab like any other
+  // as far as Coverage is concerned, which is why the slices that count tabs account for it.
+  popup: async ({ context, extensionId }, use) => {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/popup.html`);
+    await use(page);
   },
   origins: async ({}, use) => {
     const readings: FirstReading[] = [];

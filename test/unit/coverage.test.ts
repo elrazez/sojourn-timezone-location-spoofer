@@ -66,7 +66,7 @@ test('scenario 1: the happy path covers the tab, then its frame and its worker',
   expect(it.status()).toEqual({
     enabled: true,
     paused: false,
-    selected: true,
+    cityId: 'tokyo',
     covered: 1,
     pending: 0,
     restricted: 0,
@@ -103,7 +103,7 @@ test('scenario 10: with no Selection nothing attaches and no bar appears', async
   expect(it.status()).toEqual({
     enabled: true,
     paused: false,
-    selected: false,
+    cityId: null,
     covered: 0,
     pending: 0,
     restricted: 0,
