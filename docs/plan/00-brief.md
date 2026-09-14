@@ -13,7 +13,7 @@ A Chrome extension called Spoofer. I pick a City from a bundled Catalog. From th
 ## User Stories
 
 1. As a user, I want to pick a City by typing part of its name, so that I can switch cities in seconds.
-2. As a user, I want every open and future tab to report the City's time zone through `Date`, `Intl.DateTimeFormat`, and `Temporal`, so that no script sees my real zone.
+2. As a user, I want every open and future tab to report the City's time zone through `Date`, `Intl.DateTimeFormat`, and `Temporal` where present, so that no script sees my real zone.
 3. As a user, I want same-origin and cross-origin iframes, dedicated workers, and service workers of a covered page to report the same time zone as the top page from their first script, and popups opened by pages, prerendered pages, and shared workers to report it from the moment Spoofer attaches, and from their first script when they share a covered process, so that a cross-context comparison shows nothing beyond the Residual Traces the README names.
 4. As a user, I want `navigator.geolocation` to report coordinates near the City with a plausible accuracy, so that location-aware sites place me there.
 5. As a user, I want the geolocation permission prompt to behave exactly as it does without the extension, so that the permission flow itself is not a Trace.
@@ -41,7 +41,7 @@ DevTools Protocol override through `chrome.debugger` (ADR-0001). The service wor
 
 ### Protocol rule
 
-- Allowed methods, exactly four: `Emulation.setTimezoneOverride`, `Emulation.setGeolocationOverride`, `Target.setAutoAttach`, `Runtime.runIfWaitingForDebugger`.
+- Allowed methods, four always: `Emulation.setTimezoneOverride`, `Emulation.setGeolocationOverride`, `Target.setAutoAttach`, `Runtime.runIfWaitingForDebugger`. A fifth, `Emulation.clearGeolocationOverride`, is permitted only in the Disable path, and only if phase 04's detach slice proves that detach alone leaves the Override in place; otherwise it stays unused.
 - Forbidden by name, along with every method not in the allowed list: `Runtime.enable`, every `Debugger.*` method, `Page.enable`, `Log.enable`, `Network.enable`, `Emulation.setAutomationOverride`.
 - The zone goes to every session (tab, `iframe`, `worker`, `service_worker`) before that session's resume call.
 - Every child session gets its own `Target.setAutoAttach` with `autoAttach: true`, `waitForDebuggerOnStart: true`, `flatten: true`, because auto-attach is not recursive.
@@ -54,7 +54,7 @@ From `docs/research/`:
 - The zone Override is per renderer process. Frames and workers in that process follow it. Same-site tabs share a process by default. The first session to set the zone owns it; when that session goes away the process falls back to the real zone with no event, and a non-owning session that sends a different zone gets "Timezone override is already in effect". A non-owning session that sends the same zone gets success and changes nothing. Blink replays the zone after a cross-process navigation of the same tab.
 - The geolocation Override is per tab, applied in the browser process, covers cross-process iframes, never bypasses the permission check or prompt, and is cleared when the session that set it detaches. Its `timestamp` is fixed at the time of the send.
 - A tab session cannot pause popups, prerendered pages, or shared workers.
-- The debugger bar is one per extension, shown on every tab of every window while any session is attached, and closes 5 s after the last detach. Its Cancel and its close both detach every tab with reason `canceled_by_user`.
+- The debugger bar is one per extension, shown on every tab of every window while any session is attached, and closes 5 s after the last detach. Dismissing the bar, by Cancel or by any close control it offers, detaches every tab with reason `canceled_by_user`.
 - There are only two detach reasons, `canceled_by_user` and `target_closed`. `target_closed` also fires when a tab navigates to a page Chrome forbids, with the tab still open.
 - Opening DevTools does not detach Spoofer. A zone set in the DevTools Sensors panel blocks Spoofer's zone send (or is blocked by it), and a Sensors position overwrites Spoofer's.
 - An attached session keeps the extension service worker alive with no timeout (Chrome 118 and later), and worker termination does not detach sessions. No keep-alive mechanism exists or is needed.
@@ -78,11 +78,11 @@ In `codebase-design` vocabulary:
 - **Attach precondition.** Spoofer attaches only when Enabled, not Paused, and a Selection exists. A fresh install shows no bar until the user picks a City.
 - **When to attach.** On the first Selection, on Enabled turned on, on Resume, on service worker start (every existing tab), and on `tabs.onCreated` (which is how popups get covered).
 - **Worker start.** State is re-derived from `chrome.debugger.getTargets()` plus the tab list. An attach that fails with "Another debugger is already attached" means this extension already holds that session, so the tab counts as Covered.
-- **Reconcile loop.** Reconcile sends the zone to every session and geolocation to tab sessions under the refresh rule below. It runs immediately on every tab event, detach, child attach, and Selection or Enabled change, and on a 1000 ms interval while any tab is Covered. The interval bounds the shared-process fallback to 1 s, because a re-send takes ownership of a process whose override was released. The code carries a `ponytail:` comment naming the 1 s ceiling and the upgrade path (signal-driven bursts).
+- **Reconcile loop.** Reconcile sends the zone to every session and geolocation to tab sessions under the refresh rule below. It runs immediately on every tab event, detach, child attach, and Selection or Enabled change, and on a 1000 ms interval while Enabled with a Selection, whether or not a tab is Covered yet, so a failed send keeps retrying. The interval bounds the shared-process fallback to 1 s, because a re-send takes ownership of a process whose override was released. The code carries a `ponytail:` comment naming the 1 s ceiling and the upgrade path (signal-driven bursts).
 - **Geolocation refresh.** Reconcile re-sends geolocation to a tab session when the tab starts loading (`tabs.onUpdated` with status `loading`), when that tab's last geolocation send is older than 30 s, and when the Selection changes.
 - **City change.** A City change updates desired state and runs reconcile immediately, with no reload and no separate retry logic. A session whose last send failed shows Not Covered until a later run succeeds.
 - **Covered, Not Covered, Restricted.** Restricted is a tab whose top-level page no extension may touch: `chrome://`, another extension's page, `devtools:`, `view-source:`, the Chrome Web Store. It is counted separately and the badge ignores it. Not Covered is every web page (`http`, `https`, `file`) that cannot be attached or whose last send failed, whatever the reason. Examples: it frames another extension's iframe, `file://` has no file access, it shows an interstitial, an enterprise policy blocks attach, or the DevTools Sensors panel holds the zone. The popup names the reason when the error string is known.
-- **Badge.** `OFF` while Disabled or Paused. Otherwise the count of Not Covered web tabs, in red, when above zero. Empty otherwise. Restricted never counts.
+- **Badge.** `OFF` while Disabled or Paused. Otherwise the count of Not Covered web tabs, in red, when above zero. Empty otherwise. Restricted never counts. A web tab counts as Not Covered only when its last attach or send failed and the tab's status is `complete`; a tab that is loading or has a send in flight is pending and not counted.
 - **Paused.** Detach reason `canceled_by_user` sets Paused: no attach until the user presses Resume or switches Enabled back on, and Spoofer never re-attaches on its own. The popup's Paused notice says in one sentence that Resume shows the bar again. Paused is kept in `chrome.storage.session`, so a worker restart keeps it and a browser restart clears it.
 - **Disable.** Disabling detaches every tab, which clears both overrides. Enabling attaches every tab.
 - **Permission.** Geolocation permission is untouched: the prompt, grant, and deny paths are the browser's own. The Override only replaces the position.
@@ -102,7 +102,7 @@ In `codebase-design` vocabulary:
 
 ### Tooling
 
-TypeScript strict compiled by `tsc` to ESM, no bundler, zero runtime dependencies, npm. Vitest for pure modules. Playwright for the browser seam, launching Chromium with the extension loaded and serving test pages from two local origins (`localhost` and `127.0.0.1`, distinct sites) to force cross-process iframes.
+TypeScript strict compiled by `tsc` to ESM, no bundler, zero runtime dependencies, npm. Vitest for pure modules. Playwright for the browser seam, launching Chromium with the extension loaded and serving test pages from two local origins (`localhost` and `127.0.0.1`, distinct sites) to force cross-process iframes. The harness runs Chrome 153, so `Temporal` (Chrome 144) and `GeolocationPosition.prototype.toJSON` (Chrome 126) are exercised there even though the floor is 125.
 
 ## Testing Decisions
 
@@ -118,9 +118,10 @@ Fakes stand in only for Chrome adapters. No own module is mocked, no private fun
 
 Harness rules:
 
-- Both runs pin the zone with `TZ=UTC` on the Chromium process, and phase 02's smoke test asserts a page reads `UTC`. If macOS Chromium ignores `TZ`, use Chromium's `--time-zone-for-testing` switch instead and cite it in `docs/research/playwright-extension-harness.md`.
+- Both runs pin the zone with `TZ=Pacific/Kiritimati` on the Chromium process, a zone with no DST at offset `-840` minutes, so a UTC CI host cannot fake a green smoke test. Phase 02's smoke test asserts a page reads `Pacific/Kiritimati` and an offset of `-840`. If macOS Chromium ignores `TZ`, use Chromium's `--time-zone-for-testing` switch instead and cite it in `docs/research/playwright-extension-harness.md`.
 - The harness never passes `--silent-debugger-extension-api`, never uses Playwright's `timezoneId`, `geolocation`, or `setGeolocation`, and grants permissions only through `grantPermissions`.
-- Every open research item that changes behaviour becomes a named test in the phase that owns it, marked skipped with the reason if it cannot run yet: the shared-process owner loss and the New Tab Page gap in phase 03; the geolocation re-send, the timestamp age, and the iframe `allow` attribute in phase 04; the bar's viewport change and the first-script gaps in phase 06. Open items that change nothing stay in the research files.
+- Every geolocation call in the tests and the Audit passes an explicit `timeout` of 5000 ms, because a harness Chromium with no authorised location provider neither resolves nor errors on its own: the Baseline outcome is then error code 3 after the timeout, and the covered outcome is a position well inside it.
+- Every open research item that changes behaviour becomes a named test in the phase that owns it, marked skipped with the reason if it cannot run yet: the shared-process owner loss, the New Tab Page gap, the `timezonechange` event, the renderer crash, and the tab discard in phase 03; the geolocation re-send, the timestamp age, the iframe `allow` attribute, and detach clearing the position in phase 04; the bar's viewport change, the first-script gaps, the `timezonechange` count, the back/forward cache, and the pause latency in phase 06. Open items that change nothing stay in the research files.
 
 The Audit is the acceptance test: with a City selected, the diff between the covered report and the Baseline is exactly the set of Override keys, and every context in the covered report agrees with every other. Residual Traces are measured and printed by name, never folded into the Override keys.
 
@@ -150,3 +151,4 @@ Each is bounded here, measured by the Audit, and named in the README with the me
 - **Position timestamp age:** `Date.now() - position.timestamp` up to 31 s.
 - **First-script gaps:** popups, prerendered pages, and shared workers that do not share a covered process, plus tabs leaving the New Tab Page if phase 03's test is red.
 - **The bar:** one `resize` and a smaller `innerHeight` on open tabs in a headed browser when Spoofer attaches.
+- **Back/forward cache eligibility (if the Audit shows it):** a covered tab's `notRestoredReasons` and `pageshow` `persisted` flag differing from the Baseline's.

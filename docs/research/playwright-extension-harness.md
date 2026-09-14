@@ -251,10 +251,10 @@ The post lists no limits.
 
 ## Consequences for Spoofer
 
-- Launch covered runs with `chromium.launchPersistentContext(tmpDir, { channel: 'chromium', args: ['--disable-extensions-except=<dist>', '--load-extension=<dist>'], env: { ...process.env, TZ: BASELINE_TZ } })`. Launch the Baseline identically without `args`. Use no `ignoreDefaultArgs`.
+- Launch covered runs with `chromium.launchPersistentContext(tmpDir, { channel: 'chromium', args: ['--disable-extensions-except=<dist>', '--load-extension=<dist>'], env: { ...process.env, TZ: 'Pacific/Kiritimati' } })`. Launch the Baseline identically without `args`. Use no `ignoreDefaultArgs`.
 - Get the extension id from `(context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker')).url().split('/')[2]`; open the popup with `page.goto('chrome-extension://<id>/popup.html')`.
 - Forbidden in the harness: `timezoneId`, `geolocation`, `setGeolocation`, `clearPermissions` mid-test, `--silent-debugger-extension-api`, `--disable-site-isolation-trials`. Allow `--deny-permission-prompts` only in a dedicated deny test.
-- Set `BASELINE_TZ` to an IANA id that no test City uses (e.g. `Pacific/Kiritimati`, offset -840). The first harness test asserts the Baseline sees it, which settles the TZ OPEN item.
+- The Baseline zone is `TZ=Pacific/Kiritimati`, the id the brief pins: no DST, offset -840, and no test City uses it, so a UTC CI host cannot fake a green smoke test. The first harness test asserts the Baseline sees it, which settles the TZ OPEN item.
 - Grant with `context.grantPermissions(['geolocation'], { origin })` for each origin used. Test the deny path headless with no grant.
 - Force an OOPIF with a parent at `http://localhost:P` and a child at `http://127.0.0.1:P`. Verify with `newCDPSession(page)` and `Target.getTargets`, expecting a `type === 'iframe'` entry at the 127.0.0.1 URL.
 - The extension must send `Runtime.runIfWaitingForDebugger` to every child it auto-attaches with `waitForDebuggerOnStart: true`.

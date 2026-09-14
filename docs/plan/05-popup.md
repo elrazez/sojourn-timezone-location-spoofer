@@ -18,13 +18,14 @@ Call the Skill tool with `tdd`. Seams are pre-agreed. One slice at a time, red b
 
 1. A Paused status renders the Paused notice and a Resume action; a Disabled status renders neither and reads Off; an Enabled status with three covered tabs and one Restricted reads as covering three.
 2. A query of `tok` lists Tokyo first; an empty query lists nothing; a query that matches nothing renders an empty state, not an error.
+3. A status with one Not Covered tab whose error string is known renders the count and the reason text; the same status with an unknown error string renders the count with a generic reason.
 
 **Browser seam** (Playwright opens `chrome-extension://<id>/popup.html` inside the persistent context):
 
-3. Typing `tok` and choosing Tokyo makes the Selection Tokyo (read back through the service worker) and a page opened afterwards observes `Asia/Tokyo`.
-4. Turning the switch off makes the status read Off and the badge read `OFF`, and a page observes the Baseline; turning it on restores `Asia/Tokyo`.
-5. The status shows the covered count equal to the number of open `http` tabs, and updates when a tab is opened.
-6. Enter on the search box selects the first result; every control has a label; focus order is search, results, switch.
+4. Typing `tok` and choosing Tokyo makes the Selection Tokyo (read back through the service worker) and a page opened afterwards observes `Asia/Tokyo`.
+5. Turning the switch off makes the status read Off and the badge read `OFF`, and a page observes the Baseline; turning it on restores `Asia/Tokyo`.
+6. The status shows the covered count equal to the number of open `http` tabs, and updates when a tab is opened.
+7. Enter on the search box selects the first result; every control has a label; focus order is search, results, switch.
 
 Rules for the green code: no inline scripts or styles (extension CSP); `popup.html` loads `dist/popup.js` as a module; the popup renders from the status the service worker reports and never keeps its own copy of the Selection; the Resume action sends one message and the service worker's Coverage reducer does the rest.
 
@@ -36,7 +37,7 @@ Call the Skill tool with `domain-modeling` if a term crystallised (the popup's w
 
 ## Done when
 
-- [ ] `npm test` is green and includes the six slices above.
+- [ ] `npm test` is green and includes the seven slices above.
 - [ ] `grep -n "<script>\|style=" extension/popup.html` prints nothing.
 - [ ] The popup's visible strings use `CONTEXT.md` terms (Covered, Paused, Off) and none of the avoided synonyms.
 - [ ] Committed on `main` with the message `phase 05: popup`.

@@ -10,16 +10,17 @@ Build `test/audit/` as plain HTML and JavaScript served by the two-origin fixtur
 
 Probes, in every context that has the API:
 
-- **Time**: `Intl.DateTimeFormat().resolvedOptions().timeZone`; `getTimezoneOffset()` at epoch `0` and at a fixed summer instant; `toString()`, `toTimeString()`, `toLocaleString('en-US', { timeZoneName: 'long' })` of the fixed instant; `new Intl.DateTimeFormat().formatToParts(fixed)`; `Date.parse('2024-06-01T12:00')` (offset-less, so it reveals the local zone); `Temporal.Now.timeZoneId()`.
-- **Geolocation** (main and the cross-origin iframe with `allow`): the coordinate fields, `instanceof` checks, `JSON.stringify` keys, milliseconds to the first position rounded to the nearest 50, `permissions.query` state, and `Date.now() - position.timestamp <= 31000` as a boolean (unless phase 04 dropped the 30 s refresh, in which case record the age as a residual measurement instead).
+- **Time**: `Intl.DateTimeFormat().resolvedOptions().timeZone`; `getTimezoneOffset()` at epoch `0` and at a fixed summer instant; `toString()`, `toTimeString()`, `toLocaleString('en-US', { timeZoneName: 'long' })` of the fixed instant; `new Intl.DateTimeFormat().formatToParts(fixed)`; `Date.parse('2024-06-01T12:00')` (offset-less, so it reveals the local zone); `Temporal.Now.timeZoneId()` behind `typeof Temporal !== 'undefined'`, reporting `absent` where it is missing, which is the guard that keeps "no probe threw" true below Chrome 144.
+- **Geolocation** (main and the cross-origin iframe with `allow`), every call passing an explicit `timeout` of 5000 ms, because a browser with no authorised location provider neither resolves nor errors on its own, so the Baseline outcome is error code 3 after that timeout and the covered outcome is a position well inside it: the coordinate fields, `instanceof` checks, `JSON.stringify` keys, `permissions.query` state, and `Date.now() - position.timestamp <= 31000` as a boolean (unless phase 04 dropped the 30 s refresh, in which case record the age as a residual measurement instead). The milliseconds to the first position is a residual measurement in step 2, not a diff probe.
 - **Integrity**: the sorted own property names of `globalThis`; for `Date`, `Date.prototype`, `Intl`, `Intl.DateTimeFormat.prototype`, `Geolocation.prototype`, `GeolocationCoordinates.prototype`, and `GeolocationPosition.prototype`, every own property with its descriptor shape (getter, setter, writable, enumerable, configurable) and, for functions, `Function.prototype.toString` output, `name`, `length`, and whether `'prototype' in fn`; the message and stack of `Date.prototype.getTimezoneOffset.call(null)` with line and column numbers stripped; `performance.getEntriesByType('resource')` names containing `extension`; `document.scripts.length`; `navigator.webdriver`.
+- **`timezonechange`**: `'ontimezonechange' in globalThis`, and `timezonechange.events`, the number of `timezonechange` events the context has received since it started. Expected equal to the Baseline in every context.
 - **Every vector** named in `docs/research/main-world-patching.md`, one probe each, named after the CreepJS file that implements it.
 
 Step 1 is complete when the page, opened in a plain browser, resolves a report where every expected key is present and no probe threw.
 
 ## Step 2: the runner
 
-A Playwright test under `test/e2e/audit.spec.ts` that launches two persistent contexts with `TZ=UTC`, both with geolocation granted for the audit origin: one without the extension (Baseline) and one with the extension and Tokyo selected (covered). It collects both reports and asserts:
+A Playwright test under `test/e2e/audit.spec.ts` that launches two persistent contexts with `TZ=Pacific/Kiritimati`, both with geolocation granted for the audit origin: one without the extension (Baseline) and one with the extension and Tokyo selected (covered). It collects both reports and asserts:
 
 1. The set of keys whose values differ equals a literal `OVERRIDE_KEYS` list written in the test (time and geolocation values in every context, and nothing else). A key in the diff that is not in the list fails the test and prints the key with both values.
 2. Every context in the covered report agrees on the zone and the coordinates.
@@ -32,6 +33,9 @@ It then takes the residual measurements, writes them to `test/audit/residuals.js
 4. **First-script gaps**: the zone and position recorded by the first inline script in a same-site and a cross-site `window.open` popup, in a page prerendered through speculation rules, and on the first line of a shared worker, each against the Override.
 5. **New Tab Page misses**: over 20 loads that go from `chrome://new-tab-page` to the audit origin, the count whose first-script zone is not the Override.
 6. **The bar**: one headed run with `viewport: null` that records `innerHeight` and `resize` events before attach, right after, and 6 s later, and lists the difference by name.
+7. **Back/forward cache**: navigate the audit page away and back, recording `performance.getEntriesByType('navigation')[0].notRestoredReasons` stringified and the `pageshow` event's `persisted` flag, in both runs. A difference is listed by name as a Residual Trace, never a failure.
+8. **Pause latency**: the cross-origin iframe's `load` event time and a dedicated worker's time to its first message, Baseline against covered, medians over five runs.
+9. **Time to the first position**: the milliseconds to the first `getCurrentPosition` result, rounded to the nearest 50, against the Baseline.
 
 ## Step 3: close every Trace
 
@@ -48,8 +52,8 @@ Call the Skill tool with `domain-modeling` if a term crystallised (Baseline, Tra
 ## Done when
 
 - [ ] `npx playwright test test/e2e/audit.spec.ts` is green for all three assertions.
-- [ ] `test/audit/residuals.json` exists after that run and has one entry per measurement in step 2, items 4 to 6.
-- [ ] `grep -c "\." test/audit/probes.js` (or the equivalent file) shows at least one probe per vector listed in `docs/research/main-world-patching.md`; list them side by side in the session.
+- [ ] `test/audit/residuals.json` exists after that run and has one entry per measurement in step 2, items 4 to 9.
+- [ ] The runner prints the number of distinct probe names per context and it is at least 50, one per vector listed in `docs/research/main-world-patching.md`; list them side by side in the session.
 - [ ] `npm test` runs the Audit as part of `test:e2e`.
 - [ ] `git log --oneline <fixed point>..HEAD` shows any Trace fix as its own commit naming the confirmed hypothesis.
 - [ ] Committed on `main` with the message `phase 06: audit`.

@@ -11,4 +11,4 @@ Spoofer produces the Override by attaching `chrome.debugger` to every tab from t
 
 - A time zone override belongs to a renderer process, and same-site tabs share processes by default, so an attached session does not prove a tab is Covered. Coverage runs a reconcile loop that re-sends the Override (brief, Behaviour decisions).
 - Cancelling the bar detaches every tab. Spoofer enters Paused and never re-attaches on its own.
-- Only four protocol methods are allowed; the brief names them and forbids the rest.
+- Only the protocol methods the brief allows are sent: four always, plus `Emulation.clearGeolocationOverride` in the Disable path if phase 04's detach slice shows that detach alone leaves the position in place. The brief names them and forbids the rest.

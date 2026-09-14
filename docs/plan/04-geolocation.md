@@ -14,10 +14,10 @@ Call the Skill tool with `tdd`. Seams are pre-agreed. One slice at a time, red b
 2. Selecting the same City again keeps the Jitter and Accuracy; selecting a different City regenerates both.
 3. A Selection saved and loaded round-trips exactly, and a load with nothing saved yields no Selection and Enabled true.
 
-**Browser seam** (Playwright, geolocation granted through `context.grantPermissions(['geolocation'])` only; never `setGeolocation`):
+**Browser seam** (Playwright, geolocation granted through `context.grantPermissions(['geolocation'])` only; never `setGeolocation`). Every `getCurrentPosition` and `watchPosition` call in these slices passes an explicit `timeout` of 5000 ms, because a harness Chromium with no authorised location provider neither resolves nor errors on its own: the Baseline outcome is then error code 3 after that timeout, and the covered outcome is a position well inside it.
 
 4. `getCurrentPosition` in a covered page resolves with `latitude` and `longitude` equal to the Selection's jittered coordinates and `accuracy` equal to its Accuracy, read back from storage through the service worker; `altitude`, `altitudeAccuracy`, `heading`, and `speed` are `null`.
-5. The position is a genuine object: `position instanceof GeolocationPosition`, `position.coords instanceof GeolocationCoordinates`, and `JSON.stringify(position)` (`toJSON` ships since Chrome 126) carries the same numbers and all seven coordinate keys.
+5. The position is a genuine object: `position instanceof GeolocationPosition`, `position.coords instanceof GeolocationCoordinates`, and, when `'toJSON' in GeolocationPosition.prototype` (Chrome 126 and later, so the harness exercises it), `JSON.stringify(position)` carries the same numbers and all seven coordinate keys. Where `toJSON` is absent the slice reports `absent` for those assertions instead of failing.
 6. `watchPosition` delivers the same coordinates on its first callback, and two tabs agree with each other.
 7. **Iframe `allow` attribute.** A cross-origin iframe with `allow="geolocation"` observes the same coordinates as the top page, and the same iframe without `allow` gets the same outcome as it does in a Baseline context.
 8. With no permission granted, `getCurrentPosition` fails with `PERMISSION_DENIED`, exactly as in a Baseline context without the extension.
@@ -26,6 +26,7 @@ Call the Skill tool with `tdd`. Seams are pre-agreed. One slice at a time, red b
 11. Time zone and coordinates agree: with Tokyo selected the page observes `Asia/Tokyo` and a position within `3000` metres of the literal `35.6762, 139.6503`.
 12. **Re-send without error.** A page with an active `watchPosition` receives the new City's coordinates after a City change and no error callback across that re-send.
 13. **Timestamp age.** In a covered page left open for 35 s, a fresh `getCurrentPosition` resolves with `Date.now() - position.timestamp` at most `31000`.
+14. **Detach and the position.** With permission granted, Disable, then `getCurrentPosition` in the covered page returns the same result as a Baseline context: the same error code, or the same real provider outcome. Enabling restores the Override. If Disable leaves the Override in place, the Disable path sends `Emulation.clearGeolocationOverride`, the fifth method the brief allows, and this slice is what permits it; otherwise that method stays unused.
 
 If slice 12 is red, a re-send delivers `POSITION_UNAVAILABLE`: drop the 30 s refresh, keep the loading re-send, mark slice 13 skipped with that reason, and add the timestamp staleness to the brief's Residual Traces.
 
@@ -33,7 +34,7 @@ Rules for the green code:
 
 - The runner sends `Emulation.setGeolocationOverride` with only `latitude`, `longitude`, and `accuracy`, to tab sessions only, never to child sessions (a child session's detach would clear the tab's position).
 - It sends when a tab is attached, when the tab starts loading, when that tab's last geolocation send is older than 30 s, and when the Selection changes.
-- Disabled and Paused detach, which clears it.
+- Disabled and Paused detach, which clears it, unless slice 14 shows otherwise: then the Disable path also sends `Emulation.clearGeolocationOverride`.
 - Jitter and Accuracy are generated in Settings and nowhere else, so every context reads one number.
 
 ## Step 2: review
@@ -44,7 +45,7 @@ Call the Skill tool with `domain-modeling` if a term crystallised.
 
 ## Done when
 
-- [ ] `npm test` is green and includes the thirteen slices above, with at most slice 13 skipped, with its reason.
+- [ ] `npm test` is green and includes the fourteen slices above, with at most slice 13 skipped, with its reason.
 - [ ] `grep -rn "setGeolocation\|timezoneId" test/` prints nothing.
 - [ ] `grep -rn "Math.random" src/ | grep -v settings` prints nothing.
 - [ ] Committed on `main` with the message `phase 04: geolocation`.

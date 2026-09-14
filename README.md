@@ -18,7 +18,7 @@ Status: in development. The build is driven by the numbered prompts under [docs/
 
 ## How it works
 
-The override mechanism is decided and recorded in [docs/adr/](docs/adr/) by plan phase 01; the brief in [docs/plan/00-brief.md](docs/plan/00-brief.md) explains the two candidates and the trade-off (zero trace versus a visible "started debugging this browser" bar).
+[ADR-0001](docs/adr/0001-override-mechanism.md) records the override mechanism, the alternative it rejected, and what it costs: a visible "started debugging this browser" bar while any tab is covered.
 
 ## Development
 

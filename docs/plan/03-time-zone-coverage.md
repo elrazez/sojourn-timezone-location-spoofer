@@ -36,25 +36,28 @@ Call the Skill tool with `tdd`. Seams are pre-agreed. One slice at a time, red b
 1. A covered tab keeps `Asia/Tokyo` across a navigation from the `localhost` origin to the `127.0.0.1` origin.
 2. A cross-origin iframe (`127.0.0.1` inside `localhost`) observes `Asia/Tokyo` in its first script. The iframe page records the zone in an inline script at the top of `<head>` and posts it to the parent; the test asserts on that first reading, not on a later one.
 3. A dedicated worker created from a blob, a module worker, and a service worker registered by the page each observe `Asia/Tokyo` on their first line. Shared workers are not child targets of a tab session; phase 06 measures them.
-4. A popup opened with `window.open` from a covered page observes `Asia/Tokyo` in its first script.
-5. A page prerendered through speculation rules observes `Asia/Tokyo` when activated. If Playwright cannot drive activation, write the test, mark it skipped with the reason, and add the case to the brief's Manual verification line.
-6. `new Date().toString()` in a covered page ends with `GMT+0900 (Japan Standard Time)`.
-7. Disabling makes an open page observe `UTC` and offset `0`; enabling again makes it observe `Asia/Tokyo`. Neither needs a reload.
-8. Changing the City from Tokyo to Los Angeles makes an open tab observe `America/Los_Angeles` without reload, and the offset matches the literal for the test's date (write the date and the offset as literals; pick a date outside a DST transition week).
-9. The badge reads `OFF` while Disabled, reads `1` in red while a `file://` page is open (unpacked extensions have no file access, so that tab is Not Covered), and is empty while Enabled and every web tab is Covered, read through `chrome.action.getBadgeText` and `chrome.action.getBadgeBackgroundColor` inside the service worker.
-10. A `chrome://` tab counts as Restricted, not Not Covered: the status the service worker exposes reports it in the Restricted count and the badge stays empty.
-11. **Shared-process owner loss.** Launch this test's context with `--renderer-process-limit=1`, open two covered tabs on the `localhost` origin, close the tab attached first, and assert the remaining tab observes `Asia/Tokyo` within 1100 ms of the close.
-12. **Flicker probe.** A covered page and a blob worker each sample `Intl.DateTimeFormat().resolvedOptions().timeZone` and `new Date().getTimezoneOffset()` every 10 ms for 5 s, across at least four reconcile ticks, and must see exactly one value. If red, the owner's re-send is page-visible: drop the 1000 ms interval, keep signal-driven reconcile, add the fallback window to the brief's Residual Traces, and keep this test as the guard that the interval stays gone.
-13. **New Tab Page gap.** `page.goto('chrome://new-tab-page')`, then `page.goto` the test origin, and assert the zone recorded by an inline script at the top of `<head>` is `Asia/Tokyo`. If red: reconcile retries attach every 20 ms while the tab reports status `loading`, bounded at 30 s. If still red after that, mark the test skipped with the measured result as the reason; phase 06 measures the miss rate over 20 loads.
+4. A same-site popup opened with `window.open` from a covered page, which shares the opener's process, observes `Asia/Tokyo` in its first script.
+5. A cross-site popup opened with `window.open` (the `127.0.0.1` origin from a `localhost` page) observes `Asia/Tokyo` after Spoofer attaches: assert a second reading taken after the attach. Its first-script value is recorded as a measurement, not asserted, and phase 06 lists the gap under its first-script measurements.
+6. A page prerendered through speculation rules observes `Asia/Tokyo` when activated. If Playwright cannot drive activation, write the test, mark it skipped with the reason, and add the case to the brief's Manual verification line.
+7. `new Date().toString()` in a covered page ends with `GMT+0900 (Japan Standard Time)`.
+8. Disabling makes an open page observe `Pacific/Kiritimati` and offset `-840`; enabling again makes it observe `Asia/Tokyo`. Neither needs a reload.
+9. Changing the City from Tokyo to Los Angeles makes an open tab observe `America/Los_Angeles` without reload, and the offset matches the literal for the test's date (write the date and the offset as literals; pick a date outside a DST transition week).
+10. The badge reads `OFF` while Disabled, reads `1` in red while a `file://` page is open (unpacked extensions have no file access, so that tab is Not Covered), and is empty while Enabled and every web tab is Covered, read through `chrome.action.getBadgeText` and `chrome.action.getBadgeBackgroundColor` inside the service worker. Wait for every web tab to report status `complete` before asserting the badge is empty, because a loading tab is pending and is never counted.
+11. A `chrome://` tab counts as Restricted, not Not Covered: the status the service worker exposes reports it in the Restricted count and the badge stays empty.
+12. **Shared-process owner loss.** Launch this test's context with `--renderer-process-limit=1`, open two covered tabs on the `localhost` origin, close the tab attached first, and assert the remaining tab observes `Asia/Tokyo` within 1100 ms of the close.
+13. **Flicker probe.** A covered page and a blob worker each sample `Intl.DateTimeFormat().resolvedOptions().timeZone` and `new Date().getTimezoneOffset()` every 10 ms for 5 s, across at least four reconcile ticks, and must see exactly one value. Each also records `'ontimezonechange' in window` in the page and `'ontimezonechange' in self` in the worker, registers a `timezonechange` listener, and must count zero events over the same span. If red, the owner's re-send is page-visible: drop the 1000 ms interval, keep signal-driven reconcile, add the fallback window to the brief's Residual Traces, and keep this test as the guard that the interval stays gone. A non-zero `timezonechange` count is the same red.
+14. **New Tab Page gap.** `page.goto('chrome://new-tab-page')`, then `page.goto` the test origin, and assert the zone recorded by an inline script at the top of `<head>` is `Asia/Tokyo`. If red: reconcile retries attach every 20 ms while the tab reports status `loading`, bounded at 30 s. If still red after that, mark the test skipped with the measured result as the reason; phase 06 measures the miss rate over 20 loads.
+15. **Renderer crash.** `page.goto('chrome://crash')` on a covered tab, then reload it; the page observes `Asia/Tokyo` in the zone its first script records.
+16. **Tab discard.** `chrome.tabs.discard(tabId)` from the service worker, then `bringToFront` and wait for the reload; the page observes `Asia/Tokyo`. If discard cannot be driven from the harness, mark the test skipped with the reason and add it to the brief's Manual verification line.
 
 Paused after the bar's Cancel and the service worker restart are covered at the reducer seam and by the phase 07 wizard; do not simulate them with test-only hooks in production code.
 
 Rules for the green code:
 
-- The runner sends only the brief's four methods.
+- The runner sends only the methods the brief allows.
 - On attach: `Target.setAutoAttach` and the zone on the tab session.
 - On every child attach: the zone, then the child's own `Target.setAutoAttach`, then `Runtime.runIfWaitingForDebugger`. A child whose zone send is rejected still gets its resume call, and the rejection is recorded as that session's last send result.
-- Reconcile runs on every event and on a 1000 ms interval while any tab is Covered. The interval carries a `ponytail:` comment naming the 1 s ceiling and the upgrade path (signal-driven bursts).
+- Reconcile runs on every event and on a 1000 ms interval while Enabled with a Selection, whether or not a tab is Covered yet, so a failed send keeps retrying. The interval carries a `ponytail:` comment naming the 1 s ceiling and the upgrade path (signal-driven bursts).
 - The service worker re-derives state on start from `chrome.debugger.getTargets()` plus the tab list, and treats "Another debugger is already attached" as Covered.
 - Nothing attaches unless Enabled, not Paused, and a Selection exists.
 
@@ -68,7 +71,7 @@ Call the Skill tool with `code-review`. Fixed point: the SHA from the start. Spe
 
 ## Done when
 
-- [ ] `npm test` is green; the reducer tests cover all ten scenarios and browser tests 1 to 13 exist, with at most the prerender test and the New Tab Page test skipped, each with its reason.
+- [ ] `npm test` is green; the reducer tests cover all ten scenarios and browser tests 1 to 16 exist, with at most the prerender test, the New Tab Page test, and the tab discard test skipped, each with its reason.
 - [ ] `grep -rn "Runtime\." src/ | grep -v runIfWaitingForDebugger` prints nothing.
 - [ ] `grep -rn "ponytail:" src/` shows the reconcile interval's comment.
 - [ ] `git branch --list 'prototype/*'` shows `prototype/coverage-state`, and `git ls-files | grep -i prototype` prints nothing on `main`.
