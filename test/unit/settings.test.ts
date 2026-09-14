@@ -7,6 +7,9 @@ import { metresApart } from '../oracle.js';
 const TOKYO = { latitude: 35.6762, longitude: 139.6503 };
 const OSAKA = { latitude: 34.6937, longitude: 135.5023 };
 
+// cos(35.6762 degrees), written out rather than computed, so the scaling is a literal like the rest.
+const TOKYO_COSINE = 0.81234;
+
 function fakeStorage(): StorageAdapter {
   const values = new Map<string, unknown>();
   return {
@@ -51,9 +54,14 @@ test('the Enabled switch reads back as it was set', async () => {
   expect((await loadSettings(storage)).enabled).toBe(false);
 });
 
+// Two hundred draws, because one draw says nothing about where the next one lands, and because the
+// shape of two hundred of them is what tells a disc uniform by area from the ways of getting it
+// wrong: a radius drawn uniform in length, or a longitude that was never scaled by the latitude.
+const DRAWS = 200;
+
 test('a selected City reports a point within 2 km of it, and never the City itself', async () => {
-  // Two hundred draws, because one draw says nothing about where the next one lands.
-  for (let draw = 0; draw < 200; draw += 1) {
+  const points: { latitude: number; longitude: number; away: number }[] = [];
+  for (let draw = 0; draw < DRAWS; draw += 1) {
     const { coordinates } = await selectCity(fakeStorage(), 'tokyo');
 
     const away = metresApart(TOKYO, coordinates);
@@ -62,6 +70,42 @@ test('a selected City reports a point within 2 km of it, and never the City itse
     expect(coordinates.accuracy).toBe(Math.round(coordinates.accuracy));
     expect(coordinates.accuracy).toBeGreaterThanOrEqual(20);
     expect(coordinates.accuracy).toBeLessThanOrEqual(100);
+    points.push({ latitude: coordinates.latitude, longitude: coordinates.longitude, away });
+  }
+
+  // Half the radius holds a quarter of the area, so a quarter of the draws belong inside 1000 m.
+  // A radius drawn uniform in length would put half of them there.
+  const inside = points.filter((point) => point.away <= 1000).length / DRAWS;
+  expect(inside).toBeGreaterThanOrEqual(0.15);
+  expect(inside).toBeLessThanOrEqual(0.35);
+
+  // The disc has to be as wide east to west as it is north to south on the ground. A degree of
+  // longitude at this latitude is only cos(35.6762 degrees) as wide as a degree of latitude, so a
+  // point placed on a flat projection comes out about a fifth narrow here, which a factor of 1.5
+  // still admits: this bound is the one that catches a gross projection error, and the fraction
+  // above is the one that catches a radius drawn uniform in length.
+  const northSouth = spread(points.map((point) => point.latitude - TOKYO.latitude));
+  const eastWest = spread(points.map((point) => (point.longitude - TOKYO.longitude) * TOKYO_COSINE));
+  expect(eastWest / northSouth).toBeGreaterThan(1 / 1.5);
+  expect(eastWest / northSouth).toBeLessThan(1.5);
+});
+
+// How wide a set of offsets about zero sits: their root mean square, in the units they came in.
+function spread(offsets: number[]): number {
+  return Math.sqrt(offsets.reduce((sum, offset) => sum + offset * offset, 0) / offsets.length);
+}
+
+test('a Selection missing a coordinate is no Selection at all', async () => {
+  const half = [
+    { cityId: 'tokyo', coordinates: { latitude: 35.68, accuracy: 42 } },
+    { cityId: 'tokyo', coordinates: { latitude: 35.68, longitude: 139.65 } },
+  ];
+  for (const written of half) {
+    const storage = fakeStorage();
+    await storage.set('selection', written);
+
+    // A tab covered from one of these would report the real position while the popup said Covered.
+    expect((await loadSettings(storage)).selection).toBeNull();
   }
 });
 

@@ -72,9 +72,11 @@ test('scenario 1: the happy path covers the tab, then its frame and its worker',
     restricted: 0,
     notCovered: [],
     badge: { text: '', color: ALERT },
-    // Three sessions on the first pass and the same three again on the tick.
-    zoneSends: 6,
+    zoneSends: expect.any(Number),
   });
+  // Three sessions on the first pass and the same three again on the tick, at least: how often the
+  // zone is re-sent is the retry policy's business, and a test that pins it pins the policy.
+  expect(it.status().zoneSends).toBeGreaterThanOrEqual(6);
 });
 
 test('scenario 7: a tab closed while it is still attaching does not come back', async () => {

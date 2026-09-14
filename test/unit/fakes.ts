@@ -68,7 +68,7 @@ export function world(options: WorldOptions = {}): World {
       await refuseIf('zone', target);
       zones.set(key(target), zone);
     },
-    async setPosition(tabId) {
+    async setGeolocation(tabId) {
       await refuseIf('geolocation', { tabId });
     },
     async autoAttach(target) {

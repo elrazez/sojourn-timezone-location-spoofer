@@ -46,6 +46,6 @@ Call the Skill tool with `domain-modeling` if a term crystallised.
 ## Done when
 
 - [ ] `npm test` is green and includes the fourteen slices above, with at most slice 13 skipped, with its reason.
-- [ ] `grep -rn "setGeolocation\|timezoneId" test/` prints nothing.
+- [ ] `grep -rnE '\.setGeolocation\(|\b(timezoneId|geolocation):' test/ | grep -v "'Emulation.setTimezoneOverride'"` prints nothing, so no test reaches for Playwright's own time zone or position emulation.
 - [ ] `grep -rn "Math.random" src/ | grep -v settings` prints nothing.
 - [ ] Committed on `main` with the message `phase 04: geolocation`.

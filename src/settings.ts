@@ -96,10 +96,17 @@ function coordinatesFor(city: City): Coordinates {
 const radians = (degrees: number): number => (degrees * Math.PI) / 180;
 const degrees = (radians: number): number => (radians * 180) / Math.PI;
 
-// A Selection without coordinates is not a Selection: a tab covered from one would report the real
-// position while the badge said it was covered, which is the silent fallback the rules forbid.
+// A Selection missing any of the three numbers is not a Selection: the Override carries all three,
+// so a tab covered from a half-written one would report the real position while the badge said it
+// was covered, which is the silent fallback the rules forbid.
 function isSelection(value: unknown): value is Selection {
   if (typeof value !== 'object' || value === null) return false;
   const selection = value as Selection;
-  return typeof selection.cityId === 'string' && typeof selection.coordinates?.latitude === 'number';
+  const where = selection.coordinates as Partial<Coordinates> | undefined;
+  return (
+    typeof selection.cityId === 'string' &&
+    Number.isFinite(where?.latitude) &&
+    Number.isFinite(where?.longitude) &&
+    Number.isFinite(where?.accuracy)
+  );
 }

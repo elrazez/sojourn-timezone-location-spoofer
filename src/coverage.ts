@@ -373,7 +373,7 @@ async function run(command: Command, adapters: Adapters): Promise<CoverageEvent[
     case 'geolocation':
       return [
         await sent({ tabId: command.tabId }, 'geolocation', () =>
-          debuggerAdapter.setPosition(command.tabId, command.coordinates),
+          debuggerAdapter.setGeolocation(command.tabId, command.coordinates),
         ),
       ];
     case 'badge':
