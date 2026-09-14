@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spoofer coverage prototype</title>
+<style>
+  :root { --ink: #1c1b19; --dim: #6b6862; --line: #e2ded6; --bg: #faf8f4; --accent: #b3541e; --ok: #2f6f4f; --bad: #a32b1c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 24px 64px; background: var(--bg); color: var(--ink);
+         font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim);
+       margin: 32px 0 12px; font-weight: 600; }
+  p.lede { margin: 0 0 8px; max-width: 74ch; color: var(--dim); }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+  .field { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px dotted var(--line); }
+  .field:last-child { border-bottom: 0; }
+  .field b { min-width: 150px; font-weight: 600; color: var(--dim); font-size: 13px;
+             text-transform: uppercase; letter-spacing: 0.04em; }
+  .field span { flex: 1; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
+  button { font: inherit; font-size: 13px; padding: 6px 11px; border: 1px solid var(--line);
+           background: #fff; border-radius: 7px; cursor: pointer; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.step { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  button.done { opacity: 0.4; }
+  button.tab { border-radius: 999px; }
+  button.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+  .badge { display: inline-block; min-width: 26px; text-align: center; border-radius: 5px;
+           padding: 1px 6px; color: #fff; font-size: 12px; font-weight: 700; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  code { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  ol.log { margin: 0; padding-left: 20px; max-height: 220px; overflow: auto; font-size: 13px; color: var(--dim); }
+  .empty { color: var(--dim); font-style: italic; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Spoofer coverage: does the state model survive the lifecycle?</h1>
+  <p class="lede">
+    Spoofer shows every web page the time zone of one chosen City. This page drives the rules that decide,
+    for every open tab and every frame, worker and page inside it, what Spoofer should do next and what the
+    user is told. The question: <b>can any sequence of browser events leave a tab in a state the rules cannot
+    describe, or leave the user believing a tab is covered when it is not?</b>
+  </p>
+  <p class="lede">
+    Events come from the browser (a tab opened, an attach was refused, a send failed). Instructions are what
+    Spoofer wants done right now. Nothing is ever instructed twice for the same reason, and anything that
+    failed is tried again on the next one second check, so the count the user sees settles on the truth.
+  </p>
+
+  <h2>Guided walkthroughs</h2>
+  <div class="row" id="tabs"></div>
+  <div class="panel">
+    <p id="scenario-note" style="margin:0 0 12px"></p>
+    <div class="row" id="steps"></div>
+  </div>
+
+  <h2>What Spoofer knows right now</h2>
+  <div class="cols">
+    <div class="panel">
+      <div class="field"><b>Chosen city</b><span id="s-selection"></span></div>
+      <div class="field"><b>Switch</b><span id="s-enabled"></span></div>
+      <div class="field"><b>Dismissed bar</b><span id="s-paused"></span></div>
+      <div class="field"><b>Badge</b><span id="s-badge"></span></div>
+      <div class="field"><b>Covered tabs</b><span id="s-covered"></span></div>
+      <div class="field"><b>Not covered</b><span id="s-notcovered"></span></div>
+      <div class="field"><b>Waiting</b><span id="s-pending"></span></div>
+      <div class="field"><b>Off limits</b><span id="s-restricted"></span></div>
+      <div class="field"><b>Trouble</b><span id="s-error"></span></div>
+      <div class="field"><b>Clock</b><span id="s-now"></span></div>
+    </div>
+    <div class="panel">
+      <b style="font-size:13px;text-transform:uppercase;letter-spacing:0.04em;color:var(--dim)">Instructions Spoofer wants carried out</b>
+      <div id="s-commands" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <h2>Tabs</h2>
+  <div class="panel"><table><thead><tr><th>Tab</th><th>Loading</th><th>Connection</th><th>User sees</th></tr></thead>
+    <tbody id="s-tabs"></tbody></table></div>
+
+  <h2>Contexts inside those tabs</h2>
+  <div class="panel"><table><thead><tr><th>Context</th><th>Tab</th><th>Time zone sent</th><th>Watching children</th><th>Released</th><th>Position sent</th></tr></thead>
+    <tbody id="s-sessions"></tbody></table></div>
+
+  <h2>Free play</h2>
+  <div class="panel">
+    <div class="row" id="free"></div>
+    <p class="lede" style="margin:10px 0 0">Carry out runs every pending instruction and reports success. Use the failing buttons to answer an instruction with the error Chrome really returns.</p>
+  </div>
+
+  <h2>What happened</h2>
+  <div class="panel"><ol class="log" id="s-log"></ol></div>
+</main>
+
+<script>
+// ---------------------------------------------------------------------------
+// The pure module. No DOM in here: this is the part that lifts into src/coverage.ts.
+// ---------------------------------------------------------------------------
+
+// Chrome refuses an attach with these when no extension may touch the tab at all.
+const RESTRICTED = [
+  'Cannot access a chrome:// URL',
+  'The extensions gallery cannot be scripted',
+  'Cannot access contents of the page',
+];
+// Chrome says this when the session is one we already hold: a worker restart looks like this.
+const ALREADY_OURS = 'Another debugger is already attached';
+const POSITION_MAX_AGE = 30000;
+
+const NO_COVERAGE = {
+  selection: null,
+  enabled: true,
+  paused: false,
+  tabs: new Map(),
+  sessions: new Map(),
+  derived: null,
+  badge: null,
+  now: 0,
+};
+
+const key = (target) => (target.sessionId ? target.tabId + ':' + target.sessionId : String(target.tabId));
+
+function reduce(state, event) {
+  switch (event.type) {
+    case 'settings-changed':
+      return { ...state, derived: null };
+    case 'derived': {
+      const fresh = JSON.stringify(state.selection) !== JSON.stringify(event.selection);
+      const tabs = new Map();
+      for (const tab of event.tabs) {
+        const known = state.tabs.get(tab.id);
+        tabs.set(tab.id, { attached: false, attachError: null, ...known, loading: tab.loading });
+      }
+      const sessions = new Map(
+        [...state.sessions].filter(([, s]) => tabs.has(s.tabId)).map(([k, s]) => [k, fresh ? forget(s) : s]),
+      );
+      return {
+        ...state,
+        selection: event.selection,
+        enabled: event.enabled,
+        paused: event.paused,
+        tabs,
+        sessions,
+        derived: { at: state.now },
+      };
+    }
+    case 'failed':
+      return { ...state, derived: { at: state.now, error: event.error } };
+    case 'tab-created':
+      return withTab(state, event.tabId, { attached: false, attachError: null, loading: true });
+    case 'tab-status': {
+      const tab = state.tabs.get(event.tabId);
+      if (!tab) return state;
+      // A tab that starts loading needs its position again: the last one was for the old document.
+      const next = withTab(state, event.tabId, { ...tab, loading: event.loading });
+      return event.loading ? withSession(next, { tabId: event.tabId }, (s) => ({ ...s, geolocation: null })) : next;
+    }
+    case 'tab-removed': {
+      const tabs = new Map(state.tabs);
+      tabs.delete(event.tabId);
+      return dropSessions({ ...state, tabs }, event.tabId);
+    }
+    case 'attached':
+      // A tab that has already gone stays gone: a late answer must not bring it back.
+      return state.tabs.has(event.tabId) ? attach(state, event.tabId) : state;
+    case 'attach-failed':
+      if (!state.tabs.has(event.tabId)) return state;
+      return event.error.includes(ALREADY_OURS)
+        ? attach(state, event.tabId)
+        : withTab(state, event.tabId, {
+            ...state.tabs.get(event.tabId),
+            attached: false,
+            attachError: { message: event.error, at: state.now },
+          });
+    case 'detached': {
+      // The tab is often still open: Chrome says target_closed for a navigation to a page no
+      // extension may touch. Keep the tab and let reconcile try it again.
+      const paused = event.reason === 'canceled_by_user' ? true : state.paused;
+      const tab = state.tabs.get(event.tabId);
+      const next = tab ? withTab(state, event.tabId, { ...tab, attached: false, attachError: null }) : state;
+      return { ...dropSessions(next, event.tabId), paused };
+    }
+    case 'child-attached': {
+      if (!state.tabs.get(event.tabId)?.attached) return state;
+      const sessions = new Map(state.sessions);
+      sessions.set(key(event), {
+        tabId: event.tabId,
+        sessionId: event.sessionId,
+        type: event.sessionType,
+        zone: null,
+        autoAttach: null,
+        resumed: null,
+        geolocation: null,
+      });
+      return { ...state, sessions };
+    }
+    case 'child-detached': {
+      const sessions = new Map(state.sessions);
+      sessions.delete(key(event));
+      return reclaim({ ...state, sessions });
+    }
+    case 'sent': {
+      const session = state.sessions.get(key(event.target));
+      if (!session) return state;
+      const record = { at: state.now, error: event.error };
+      return withSession(state, event.target, (s) => ({ ...s, [event.what]: record }));
+    }
+    case 'resumed':
+      return { ...state, paused: false };
+    case 'badge-set':
+      return { ...state, badge: { text: event.text, color: event.color } };
+    case 'tick':
+      return { ...state, now: event.now };
+    default:
+      return state;
+  }
+}
+
+function reconcile(state) {
+  // Never read the browser, or the last read failed and a check has passed since: read it again.
+  if (!state.derived || (state.derived.error && state.derived.at < state.now)) return [{ type: 'rederive' }];
+
+  const commands = [];
+  const zone = state.selection ? state.selection.zone : null;
+  const active = Boolean(zone) && state.enabled && !state.paused;
+
+  for (const [tabId, tab] of state.tabs) {
+    if (!active) {
+      if (tab.attached) commands.push({ type: 'detach', tabId });
+    } else if (!tab.attached && (!tab.attachError || tab.attachError.at < state.now)) {
+      commands.push({ type: 'attach', tabId });
+    }
+  }
+
+  if (active) {
+    for (const [, session] of state.sessions) {
+      const target = { tabId: session.tabId, sessionId: session.sessionId };
+      // Every check re-sends the zone: it is what takes a renderer back whose override was released
+      // when another tab left it, and what retries a send that failed.
+      if (!session.zone || session.zone.at < state.now) commands.push({ type: 'zone', target, zone });
+      if (!session.autoAttach || (session.autoAttach.error && session.autoAttach.at < state.now)) {
+        commands.push({ type: 'auto-attach', target });
+      }
+      if (session.sessionId && (!session.resumed || (session.resumed.error && session.resumed.at < state.now))) {
+        commands.push({ type: 'resume', target });
+      }
+      if (!session.sessionId && state.selection.coordinates && positionDue(session, state.now)) {
+        commands.push({ type: 'geolocation', tabId: session.tabId, coordinates: state.selection.coordinates });
+      }
+    }
+  }
+
+  const badge = desiredBadge(state);
+  if (!state.badge || state.badge.text !== badge.text || state.badge.color !== badge.color) {
+    commands.push({ type: 'badge', ...badge });
+  }
+  return commands;
+}
+
+function status(state) {
+  const tabs = [...state.tabs].map(([tabId, tab]) => ({ tabId, loading: tab.loading, status: tabStatus(state, tabId) }));
+  return {
+    enabled: state.enabled,
+    paused: state.paused,
+    selected: Boolean(state.selection),
+    covered: tabs.filter((t) => t.status === 'covered').length,
+    pending: tabs.filter((t) => t.status === 'pending').length,
+    restricted: tabs.filter((t) => t.status === 'restricted').length,
+    notCovered: tabs.filter((t) => t.status === 'not covered').map((t) => ({ tabId: t.tabId, reason: reasonFor(state, t.tabId) })),
+    badge: desiredBadge(state),
+    error: state.derived && state.derived.error,
+  };
+}
+
+function tabStatus(state, tabId) {
+  const tab = state.tabs.get(tabId);
+  if (!tab) return 'pending';
+  if (tab.attachError) return RESTRICTED.some((r) => tab.attachError.message.includes(r)) ? 'restricted' : 'not covered';
+  if (!tab.attached) return 'pending';
+  const own = [...state.sessions.values()].filter((s) => s.tabId === tabId);
+  if (own.some((s) => failed(s))) return 'not covered';
+  const top = own.find((s) => !s.sessionId);
+  return top && top.zone && !top.zone.error ? 'covered' : 'pending';
+}
+
+function reasonFor(state, tabId) {
+  const tab = state.tabs.get(tabId);
+  if (tab.attachError) return tab.attachError.message;
+  const broken = [...state.sessions.values()].find((s) => s.tabId === tabId && failed(s));
+  return broken ? (broken.zone || broken.autoAttach || broken.resumed || broken.geolocation).error : 'unknown';
+}
+
+function desiredBadge(state) {
+  if (!state.enabled || state.paused) return { text: 'OFF', color: '#5f6368' };
+  // A loading tab is still due its override, so it is never counted against Spoofer.
+  const count = [...state.tabs.keys()].filter(
+    (tabId) => tabStatus(state, tabId) === 'not covered' && !state.tabs.get(tabId).loading,
+  ).length;
+  return count > 0 ? { text: String(count), color: '#d93025' } : { text: '', color: '#d93025' };
+}
+
+const failed = (s) => [s.zone, s.autoAttach, s.resumed, s.geolocation].some((r) => r && r.error);
+const positionDue = (session, now) => !session.geolocation || now - session.geolocation.at >= POSITION_MAX_AGE;
+const forget = (s) => ({ ...s, zone: null, geolocation: null });
+
+function attach(state, tabId) {
+  const tab = state.tabs.get(tabId) || { loading: false };
+  const next = withTab(state, tabId, { ...tab, attached: true, attachError: null });
+  if (next.sessions.has(String(tabId))) return next;
+  const sessions = new Map(next.sessions);
+  sessions.set(String(tabId), { tabId, sessionId: null, type: 'tab', zone: null, autoAttach: null, resumed: null, geolocation: null });
+  return { ...next, sessions };
+}
+
+// A session leaving can release the zone for a whole renderer process, with no event to say so, so
+// every session left over owes a fresh send.
+function dropSessions(state, tabId) {
+  const sessions = new Map([...state.sessions].filter(([, s]) => s.tabId !== tabId));
+  return reclaim({ ...state, sessions });
+}
+
+function reclaim(state) {
+  return { ...state, sessions: new Map([...state.sessions].map(([k, s]) => [k, { ...s, zone: null }])) };
+}
+
+function withTab(state, tabId, tab) {
+  return { ...state, tabs: new Map(state.tabs).set(tabId, tab) };
+}
+
+function withSession(state, target, update) {
+  const k = key(target);
+  const session = state.sessions.get(k);
+  if (!session) return state;
+  return { ...state, sessions: new Map(state.sessions).set(k, update(session)) };
+}
+
+// ---------------------------------------------------------------------------
+// The throwaway page around it.
+// ---------------------------------------------------------------------------
+
+const TOKYO = { cityId: 'tokyo', zone: 'Asia/Tokyo' };
+const LOS_ANGELES = { cityId: 'los-angeles', zone: 'America/Los_Angeles' };
+
+let state = NO_COVERAGE;
+let log = [];
+let openTab = 0;
+let stepIndex = 0;
+
+function apply(event, note) {
+  state = reduce(state, event);
+  log.unshift((note || event.type) + '  ' + JSON.stringify(event).slice(0, 120));
+  render();
+}
+
+// Answers every pending instruction the way a browser that agrees would.
+function carryOut(errors) {
+  for (const command of reconcile(state)) {
+    const failure = (errors || []).find((e) => e.type === command.type && (e.tabId === undefined || e.tabId === (command.tabId ?? command.target.tabId)));
+    if (command.type === 'rederive') continue;
+    if (command.type === 'attach') state = reduce(state, failure ? { type: 'attach-failed', tabId: command.tabId, error: failure.error } : { type: 'attached', tabId: command.tabId });
+    if (command.type === 'detach') state = reduce(state, { type: 'detached', tabId: command.tabId, reason: 'requested' });
+    if (command.type === 'zone') state = reduce(state, { type: 'sent', target: command.target, what: 'zone', error: failure && failure.error });
+    if (command.type === 'auto-attach') state = reduce(state, { type: 'sent', target: command.target, what: 'autoAttach', error: failure && failure.error });
+    if (command.type === 'resume') state = reduce(state, { type: 'sent', target: command.target, what: 'resumed', error: failure && failure.error });
+    if (command.type === 'geolocation') state = reduce(state, { type: 'sent', target: { tabId: command.tabId }, what: 'geolocation', error: failure && failure.error });
+    if (command.type === 'badge') state = reduce(state, { type: 'badge-set', text: command.text, color: command.color });
+  }
+  log.unshift('carried out');
+  render();
+}
+
+const derived = (selection, tabs, extra) => ({ type: 'derived', selection, enabled: true, paused: false, tabs, ...extra });
+const tab = (id, loading) => ({ id, loading: Boolean(loading) });
+
+const FREE = [
+  ['Choose Tokyo', () => apply(derived(TOKYO, [...state.tabs.keys()].map((id) => tab(id))))],
+  ['Choose Los Angeles', () => apply(derived(LOS_ANGELES, [...state.tabs.keys()].map((id) => tab(id))))],
+  ['Choose nothing', () => apply(derived(null, [...state.tabs.keys()].map((id) => tab(id))))],
+  ['Switch off', () => apply({ ...derived(state.selection, [...state.tabs.keys()].map((id) => tab(id))), enabled: false })],
+  ['Switch on', () => apply(derived(state.selection, [...state.tabs.keys()].map((id) => tab(id))))],
+  ['Open a tab', () => apply({ type: 'tab-created', tabId: nextTabId() })],
+  ['Close newest tab', () => apply({ type: 'tab-removed', tabId: [...state.tabs.keys()].pop() })],
+  ['Tab finished loading', () => apply({ type: 'tab-status', tabId: [...state.tabs.keys()].pop(), loading: false })],
+  ['A frame appears', () => apply({ type: 'child-attached', tabId: [...state.tabs.keys()].pop(), sessionId: 'f' + Math.random().toString(36).slice(2, 5), sessionType: 'iframe' })],
+  ['A worker appears', () => apply({ type: 'child-attached', tabId: [...state.tabs.keys()].pop(), sessionId: 'w' + Math.random().toString(36).slice(2, 5), sessionType: 'worker' })],
+  ['User dismisses the bar', () => apply({ type: 'detached', tabId: [...state.tabs.keys()].pop(), reason: 'canceled_by_user' })],
+  ['User presses Resume', () => apply({ type: 'resumed' })],
+  ['One second passes', () => apply({ type: 'tick', now: state.now + 1000 })],
+  ['Carry out', () => carryOut()],
+  ['Carry out, chrome page refuses', () => carryOut([{ type: 'attach', error: 'Cannot access a chrome:// URL' }])],
+  ['Carry out, file page refuses', () => carryOut([{ type: 'attach', error: 'Cannot navigate to a file URL without local file access.' }])],
+  ['Carry out, zone already taken', () => carryOut([{ type: 'zone', error: 'Timezone override is already in effect' }])],
+  ['Start over', () => { state = NO_COVERAGE; log = []; render(); }],
+];
+
+function nextTabId() {
+  return ([...state.tabs.keys()].pop() || 0) + 1;
+}
+
+const reset = () => { state = NO_COVERAGE; log = []; };
+
+const SCENARIOS = [
+  {
+    name: '1 Happy path',
+    note: 'One tab open, the user picks Tokyo. Watch the tab go from waiting to covered, and the frame and worker inside it each get the zone before they are released to run.',
+    steps: [
+      ['Start with one tab open', () => { reset(); state = reduce(state, { type: 'derived', selection: null, enabled: true, paused: false, tabs: [tab(1)] }); }],
+      ['User picks Tokyo', () => apply(derived(TOKYO, [tab(1)]))],
+      ['Browser agrees', () => carryOut()],
+      ['A cross site frame starts', () => apply({ type: 'child-attached', tabId: 1, sessionId: 'frame', sessionType: 'iframe' })],
+      ['Browser agrees', () => carryOut()],
+      ['A worker starts', () => apply({ type: 'child-attached', tabId: 1, sessionId: 'worker', sessionType: 'worker' })],
+      ['Browser agrees', () => carryOut()],
+      ['One second passes', () => apply({ type: 'tick', now: 1000 })],
+      ['Browser agrees', () => carryOut()],
+    ],
+  },
+  {
+    name: '2 Cancel then Resume',
+    note: 'The user dismisses Chrome’s debugging bar. Every tab drops at once and the badge reads OFF. Spoofer must never reconnect on its own: only Resume brings it back.',
+    steps: [
+      ['Two tabs covered in Tokyo', () => { reset(); state = reduce(state, derived(TOKYO, [tab(1), tab(2)])); carryOut(); }],
+      ['User dismisses the bar for tab 1', () => apply({ type: 'detached', tabId: 1, reason: 'canceled_by_user' })],
+      ['and for tab 2', () => apply({ type: 'detached', tabId: 2, reason: 'canceled_by_user' })],
+      ['A second passes, nothing reconnects', () => { apply({ type: 'tick', now: 1000 }); carryOut(); }],
+      ['User presses Resume', () => apply({ type: 'resumed' })],
+      ['Browser agrees', () => carryOut()],
+    ],
+  },
+  {
+    name: '3 Switch off and on',
+    note: 'Three tabs covered. Switching off disconnects all three, which is what hands the real time zone back. Switching on covers them again with no reload.',
+    steps: [
+      ['Three tabs covered in Tokyo', () => { reset(); state = reduce(state, derived(TOKYO, [tab(1), tab(2), tab(3)])); carryOut(); }],
+      ['User switches Spoofer off', () => apply({ ...derived(TOKYO, [tab(1), tab(2), tab(3)]), enabled: false })],
+      ['Browser agrees', () => carryOut()],
+      ['User switches it back on', () => apply(derived(TOKYO, [tab(1), tab(2), tab(3)]))],
+      ['Browser agrees', () => carryOut()],
+    ],
+  },
+  {
+    name: '4 City change with a clash',
+    note: 'Three tabs on Tokyo, the user switches to Los Angeles. Tabs sharing one renderer clash: the one that does not hold the zone is told it is already in effect. That tab reads not covered until the next check, when the holder has moved and the send lands.',
+    steps: [
+      ['Three tabs covered in Tokyo', () => { reset(); state = reduce(state, derived(TOKYO, [tab(1), tab(2), tab(3)])); carryOut(); }],
+      ['User picks Los Angeles', () => apply(derived(LOS_ANGELES, [tab(1), tab(2), tab(3)]))],
+      ['Tab 2 is told the zone is taken', () => carryOut([{ type: 'zone', tabId: 2, error: 'Timezone override is already in effect' }])],
+      ['One second passes', () => apply({ type: 'tick', now: 1000 })],
+      ['This time it lands', () => carryOut()],
+    ],
+  },
+  {
+    name: '5 Spoofer restarts',
+    note: 'Chrome stops and restarts Spoofer’s worker while two tabs are still connected. Reconnecting answers "another debugger is already attached", which means the connection is ours and still live: both tabs stay covered.',
+    steps: [
+      ['Worker starts, two tabs open', () => { reset(); state = reduce(state, derived(TOKYO, [tab(1), tab(2)])); }],
+      ['Both were already connected', () => carryOut([{ type: 'attach', error: 'Another debugger is already attached to the tab with id: 1.' }, { type: 'attach', error: 'Another debugger is already attached to the tab with id: 2.' }])],
+      ['The frames report in again', () => apply({ type: 'child-attached', tabId: 1, sessionId: 'frame', sessionType: 'iframe' })],
+      ['Browser agrees', () => carryOut()],
+    ],
+  },
+  {
+    name: '6 Developer tools hold the zone',
+    note: 'A developer set a time zone in Chrome’s own tools for this tab. Spoofer cannot take it, every send is refused, and the honest answer is a red badge, not a quiet failure.',
+    steps: [
+      ['One tab covered in Tokyo', () => { reset(); state = reduce(state, derived(TOKYO, [tab(1)])); }],
+      ['Every send is refused', () => carryOut([{ type: 'zone', error: 'Timezone override is already in effect' }])],
+      ['One second passes', () => apply({ type: 'tick', now: 1000 })],
+      ['Refused again', () => carryOut([{ type: 'zone', error: 'Timezone override is already in effect' }])],
+    ],
+  },
+  {
+    name: '7 Tab closed mid connect',
+    note: 'A tab is closed while Spoofer is still connecting to it. The late answer must not bring the tab back from the dead.',
+    steps: [
+      ['Tokyo chosen, a tab opens', () => { reset(); state = reduce(state, derived(TOKYO, [])); state = reduce(state, { type: 'tab-created', tabId: 1 }); }],
+      ['User closes it at once', () => apply({ type: 'tab-removed', tabId: 1 })],
+      ['The connection answers late', () => apply({ type: 'attached', tabId: 1 })],
+      ['Browser agrees', () => carryOut()],
+      ['The browser says it is gone', () => apply({ type: 'detached', tabId: 1, reason: 'target_closed' })],
+    ],
+  },
+  {
+    name: '8 Shared renderer loses its owner',
+    note: 'Two same site tabs share one renderer, so one time zone serves both. When the tab that claimed it closes, the other silently falls back to the real zone with no event at all. The rules must re send without being told.',
+    steps: [
+      ['Two same site tabs covered', () => { reset(); state = reduce(state, derived(TOKYO, [tab(1), tab(2)])); carryOut(); }],
+      ['The owning tab closes', () => apply({ type: 'tab-removed', tabId: 1 })],
+      ['Watch: tab 2 owes a fresh send', () => carryOut()],
+      ['One second passes', () => { apply({ type: 'tick', now: 1000 }); carryOut(); }],
+    ],
+  },
+  {
+    name: '9 Covered tab goes somewhere forbidden',
+    note: 'A covered tab navigates to a page no extension may touch. Chrome drops the connection and says the target closed, although the tab is still there. It becomes off limits, off the badge, and is picked up again when it leaves.',
+    steps: [
+      ['One tab covered in Tokyo', () => { reset(); state = reduce(state, derived(TOKYO, [tab(1)])); carryOut(); }],
+      ['It navigates to a browser page', () => apply({ type: 'detached', tabId: 1, reason: 'target_closed' })],
+      ['Reconnecting is refused', () => carryOut([{ type: 'attach', error: 'Cannot access a chrome:// URL' }])],
+      ['One second passes', () => apply({ type: 'tick', now: 1000 })],
+      ['It leaves for a website', () => carryOut()],
+    ],
+  },
+  {
+    name: '10 No city chosen yet',
+    note: 'A fresh install. Nothing is connected, no debugging bar appears, and the badge stays quiet. Opening tabs changes nothing until a city is picked.',
+    steps: [
+      ['Fresh install, two tabs open', () => { reset(); state = reduce(state, derived(null, [tab(1), tab(2)])); }],
+      ['Nothing to carry out', () => carryOut()],
+      ['A third tab opens', () => apply({ type: 'tab-created', tabId: 3 })],
+      ['Still nothing', () => carryOut()],
+      ['One second passes', () => { apply({ type: 'tick', now: 1000 }); carryOut(); }],
+    ],
+  },
+];
+
+const el = (id) => document.getElementById(id);
+
+function render() {
+  const view = status(state);
+  const commands = reconcile(state);
+
+  el('s-selection').textContent = state.selection ? state.selection.cityId + '  (' + state.selection.zone + ')' : 'none yet';
+  el('s-enabled').textContent = state.enabled ? 'on' : 'off';
+  el('s-paused').textContent = state.paused ? 'yes, waiting for Resume' : 'no';
+  el('s-badge').innerHTML = '<span class="badge" style="background:' + view.badge.color + '">' + (view.badge.text || '&nbsp;') + '</span>'
+    + (state.badge ? '' : ' <span class="empty">(not applied yet)</span>');
+  el('s-covered').textContent = view.covered;
+  el('s-notcovered').innerHTML = view.notCovered.length
+    ? view.notCovered.map((n) => '<span class="bad">tab ' + n.tabId + ': ' + n.reason + '</span>').join('<br>')
+    : '0';
+  el('s-pending').textContent = view.pending;
+  el('s-restricted').textContent = view.restricted;
+  el('s-error').innerHTML = view.error ? '<span class="bad">' + view.error + '</span>' : 'none';
+  el('s-now').textContent = state.now + ' ms';
+
+  el('s-commands').innerHTML = commands.length
+    ? '<ol style="margin:0;padding-left:18px">' + commands.map((c) => '<li><code>' + describe(c) + '</code></li>').join('') + '</ol>'
+    : '<span class="empty">nothing due</span>';
+
+  el('s-tabs').innerHTML = [...state.tabs].map(([id, t]) => {
+    const s = tabStatus(state, id);
+    return '<tr><td>' + id + '</td><td>' + (t.loading ? 'yes' : 'no') + '</td><td>'
+      + (t.attached ? 'connected' : t.attachError ? '<span class="bad">' + t.attachError.message + '</span>' : 'not connected')
+      + '</td><td class="' + (s === 'covered' ? 'ok' : s === 'not covered' ? 'bad' : '') + '">' + s + '</td></tr>';
+  }).join('') || '<tr><td colspan="4" class="empty">no tabs</td></tr>';
+
+  el('s-sessions').innerHTML = [...state.sessions].map(([k, s]) =>
+    '<tr><td>' + (s.sessionId ? s.type + ' ' + s.sessionId : 'the page') + '</td><td>' + s.tabId + '</td><td>'
+    + record(s.zone) + '</td><td>' + record(s.autoAttach) + '</td><td>'
+    + (s.sessionId ? record(s.resumed) : '&mdash;') + '</td><td>' + (s.sessionId ? '&mdash;' : record(s.geolocation)) + '</td></tr>',
+  ).join('') || '<tr><td colspan="6" class="empty">no contexts</td></tr>';
+
+  el('s-log').innerHTML = log.slice(0, 40).map((l) => '<li><code>' + escape(l) + '</code></li>').join('');
+
+  el('free').innerHTML = '';
+  FREE.forEach(([label, run], i) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = () => { run(); render(); };
+    el('free').appendChild(b);
+  });
+
+  el('tabs').innerHTML = '';
+  SCENARIOS.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab';
+    b.setAttribute('aria-selected', String(i === openTab));
+    b.textContent = s.name;
+    b.onclick = () => { openTab = i; stepIndex = 0; reset(); render(); };
+    el('tabs').appendChild(b);
+  });
+
+  const scenario = SCENARIOS[openTab];
+  el('scenario-note').textContent = scenario.note;
+  el('steps').innerHTML = '';
+  scenario.steps.forEach(([label, run], i) => {
+    const b = document.createElement('button');
+    b.className = i === stepIndex ? 'step' : i < stepIndex ? 'done' : '';
+    b.textContent = (i + 1) + '. ' + label;
+    b.disabled = i !== stepIndex;
+    b.onclick = () => { run(); stepIndex = i + 1; render(); };
+    el('steps').appendChild(b);
+  });
+}
+
+function record(r) {
+  if (!r) return '<span class="empty">not yet</span>';
+  return r.error ? '<span class="bad">' + r.error + '</span>' : '<span class="ok">ok at ' + r.at + '</span>';
+}
+
+function describe(c) {
+  if (c.type === 'zone') return 'send ' + c.zone + ' to ' + (c.target.sessionId || 'the page of tab ' + c.target.tabId);
+  if (c.type === 'auto-attach') return 'watch children of ' + (c.target.sessionId || 'tab ' + c.target.tabId);
+  if (c.type === 'resume') return 'release ' + c.target.sessionId;
+  if (c.type === 'geolocation') return 'send the position to tab ' + c.tabId;
+  if (c.type === 'badge') return 'badge "' + c.text + '"';
+  if (c.type === 'rederive') return 'read the browser again';
+  return c.type + ' tab ' + c.tabId;
+}
+
+function escape(s) {
+  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+}
+
+render();
+</script>
+</body>
+</html>
