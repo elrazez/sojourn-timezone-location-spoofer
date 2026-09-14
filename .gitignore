@@ -1,0 +1,7 @@
+node_modules/
+extension/dist/
+test-results/
+playwright-report/
+.scratch/
+*.zip
+.DS_Store
