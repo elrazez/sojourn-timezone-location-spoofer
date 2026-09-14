@@ -152,7 +152,7 @@ The post lists no limits.
 - Blink seeds its host zone from ICU (`timezone_controller.cc` L100 `host_timezone_id_ = GetCurrentTimezoneId();`).
 - Linux: `base/i18n/icu_util.cc` L334-L339 populates the ICU default at startup (`icu::TimeZone::createDefault()`). `services/device/time_zone_monitor/time_zone_monitor_linux.cc` L180-L195 skips file watching when TZ is set ("If the TZ environment variable is set, its value specifies the time zone ... in the ... renderer processes." / `if (!getenv("TZ"))`).
 - macOS: `time_zone_monitor_mac.mm` L24 re-detects on a system time zone change notification (`UpdateIcuAndNotifyClients(DetectHostTimeZoneFromIcu())`). Detection goes through ICU, so `TZ` still takes precedence.
-- OPEN: end-to-end on both OSes, since renderer environment inheritance and the macOS sandbox were not traced. Cheapest experiment: launch with `env: { ...process.env, TZ: 'Pacific/Kiritimati' }`, then assert `Intl.DateTimeFormat().resolvedOptions().timeZone === 'Pacific/Kiritimati'` and `new Date(0).getTimezoneOffset() === -840` in a page, on macOS and on Linux.
+- SETTLED on macOS (arm64, Chromium 153 through `channel: 'chromium'`, headless): `test/e2e/smoke.spec.ts` launches with `env: { ...process.env, TZ: 'Pacific/Kiritimati' }` and a page reads `Pacific/Kiritimati` at offset `-840`, so the harness needs no `--time-zone-for-testing` switch. OPEN: the same assertion on Linux, which the same test settles when CI first runs there.
 
 **`grantPermissions` and the prompt.**
 - A grant skips the prompt entirely, so the prompt path is not exercised.

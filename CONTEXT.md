@@ -36,6 +36,10 @@ _Avoid_: attached, patched, protected
 A tab showing a web page that should observe the Override but does not, whatever the reason. The badge counts these.
 _Avoid_: uncovered, exposed, leaking
 
+**Pending**:
+A tab that is due the Override and has not observed it yet, because it is still loading or a send is in flight. It is neither Covered nor Not Covered and never counts on the badge.
+_Avoid_: in progress, waiting, unknown
+
 **Restricted**:
 A tab whose top-level page no extension may touch, such as a browser settings page, another extension's page, or the Chrome Web Store. It is neither Covered nor Not Covered and never counts on the badge.
 _Avoid_: blocked, excluded, skipped

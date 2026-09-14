@@ -1,0 +1,21 @@
+{
+  "name": "spoofer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome extension that presents websites with the geolocation and time zone of a City the user picks.",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test:unit": "vitest run test/unit",
+    "test:e2e": "npm run build && playwright test",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
