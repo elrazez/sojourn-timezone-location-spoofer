@@ -1,0 +1,8 @@
+<!doctype html>
+<script>
+  // First script in the frame, so the parent hears what the frame saw before anything else.
+  window.__first = { zone: Intl.DateTimeFormat().resolvedOptions().timeZone, offset: new Date().getTimezoneOffset() };
+  parent.postMessage(window.__first, '*');
+</script>
+<meta charset="utf-8">
+<title>Spoofer frame</title>

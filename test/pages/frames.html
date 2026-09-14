@@ -1,0 +1,17 @@
+<!doctype html>
+<script>
+  window.__first = { zone: Intl.DateTimeFormat().resolvedOptions().timeZone, offset: new Date().getTimezoneOffset() };
+  window.__frame = null;
+  // Only the first reading the frame reports is kept.
+  addEventListener('message', (event) => {
+    if (window.__frame === null) window.__frame = event.data;
+  });
+</script>
+<meta charset="utf-8">
+<title>Spoofer frame host</title>
+<body>
+<script>
+  const frame = document.createElement('iframe');
+  frame.src = new URLSearchParams(location.search).get('child');
+  document.body.appendChild(frame);
+</script>

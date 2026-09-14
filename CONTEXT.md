@@ -52,6 +52,10 @@ _Avoid_: stopped, suspended, cancelled
 The user-set switch. Disabled means every tab observes real values and the badge says so.
 _Avoid_: active, on/off, running
 
+**Badge**:
+The text Chrome shows on Spoofer's toolbar icon: `OFF` when the Override is off, the number of Not Covered tabs in red when there are any, and nothing at all otherwise.
+_Avoid_: counter, indicator, icon
+
 **Trace**:
 Any observable difference between a covered page and the same page in an unmodified browser, other than the Override itself.
 _Avoid_: leak, tell, fingerprint, artifact

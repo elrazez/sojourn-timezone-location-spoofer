@@ -1,73 +1,128 @@
-// In-memory stand-ins for the Chrome adapters, the only things these tests fake.
+// In-memory stand-ins for the Chrome adapters, the only things these tests fake, plus the loop the
+// service worker runs over them: reduce every event, reconcile, run, reduce what came back.
 
+import type { ActionAdapter } from '../../src/chrome/action.js';
 import type { DebuggerAdapter, SessionTarget } from '../../src/chrome/debugger.js';
 import type { StorageAdapter } from '../../src/chrome/storage.js';
-import type { TabsAdapter } from '../../src/chrome/tabs.js';
+import type { TabsAdapter, TabState } from '../../src/chrome/tabs.js';
+import {
+  NO_COVERAGE,
+  reduce,
+  settle as settleCoverage,
+  status,
+  type Adapters,
+  type Command,
+  type CoverageEvent,
+  type CoverageState,
+} from '../../src/coverage.js';
 
-export type FakeDebugger = DebuggerAdapter & {
-  failAttach(tabId: number, error: string): void;
-  zoneOf(tabId: number, sessionId?: string): string | undefined;
+// What the fake browser answers with instead of doing the thing, keyed by command and target.
+export type Refusal = { command: Command['type']; tabId?: number; sessionId?: string; error: string };
+
+export type World = {
+  apply(...events: CoverageEvent[]): void;
+  settle(): Promise<Command[]>;
+  refuse(...refusals: Refusal[]): void;
+  allow(command: Command['type']): void;
+  status(): ReturnType<typeof status>;
+  state(): CoverageState;
+  zoneOf(target: SessionTarget): string | undefined;
 };
 
-export type FakeStorage = StorageAdapter & { fail(error: string): void };
+export type WorldOptions = {
+  stored?: Record<string, unknown>;
+  tabs?: TabState[];
+  storageFails?: string;
+};
 
-export function fakeDebugger(): FakeDebugger {
-  const attachErrors = new Map<number, string>();
+export function world(options: WorldOptions = {}): World {
+  let state = NO_COVERAGE;
+  let refusals: Refusal[] = [];
   const zones = new Map<string, string>();
-  const attached = new Set<number>();
-  return {
+  const stored = new Map<string, unknown>(Object.entries(options.stored ?? {}));
+
+  const refusalFor = (command: Command['type'], target: SessionTarget): string | undefined =>
+    refusals.find(
+      (r) =>
+        r.command === command &&
+        (r.tabId === undefined || r.tabId === target.tabId) &&
+        (r.sessionId === undefined || r.sessionId === target.sessionId),
+    )?.error;
+
+  const refuseIf = async (command: Command['type'], target: SessionTarget): Promise<void> => {
+    const error = refusalFor(command, target);
+    if (error !== undefined) throw new Error(error);
+  };
+
+  const debuggerAdapter: DebuggerAdapter = {
     async attach(tabId) {
-      const error = attachErrors.get(tabId);
-      if (error) throw new Error(error);
-      attached.add(tabId);
+      await refuseIf('attach', { tabId });
+    },
+    async detach(tabId) {
+      await refuseIf('detach', { tabId });
     },
     async setTimezone(target, zone) {
+      await refuseIf('zone', target);
       zones.set(key(target), zone);
     },
-    async setGeolocation() {},
-    async autoAttach() {},
-    async resume() {},
+    async setGeolocation(tabId) {
+      await refuseIf('geolocation', { tabId });
+    },
+    async autoAttach(target) {
+      await refuseIf('auto-attach', target);
+    },
+    async resume(target) {
+      await refuseIf('resume', target);
+    },
     onDetach() {},
-    failAttach(tabId, error) {
-      attachErrors.set(tabId, error);
-    },
-    zoneOf(tabId, sessionId) {
-      return zones.get(key({ tabId, sessionId }));
-    },
+    onChildAttached() {},
+    onChildDetached() {},
   };
-}
 
-export function fakeStorage(): FakeStorage {
-  const values = new Map<string, unknown>();
-  let error: string | undefined;
-  return {
+  const storage: StorageAdapter = {
     async get(storageKey) {
-      if (error) throw new Error(error);
-      return values.get(storageKey);
+      if (options.storageFails) throw new Error(options.storageFails);
+      return stored.get(storageKey);
     },
     async set(storageKey, value) {
-      if (error) throw new Error(error);
-      values.set(storageKey, value);
+      if (options.storageFails) throw new Error(options.storageFails);
+      stored.set(storageKey, value);
     },
     onChange() {},
-    fail(message) {
-      error = message;
-    },
   };
-}
 
-export function fakeTabs(tabIds: number[] = []): TabsAdapter {
-  return {
-    async listIds() {
-      return [...tabIds];
+  const tabs: TabsAdapter = {
+    async list() {
+      return [...(options.tabs ?? [])];
     },
     onCreated() {},
+    onUpdated() {},
     onRemoved() {},
   };
-}
 
-export function fakeAdapters(tabIds: number[] = []) {
-  return { debuggerAdapter: fakeDebugger(), storage: fakeStorage(), tabs: fakeTabs(tabIds) };
+  const action: ActionAdapter = { async setBadge() {} };
+
+  const adapters: Adapters = { debuggerAdapter, storage, tabs, action, session: storage };
+
+  return {
+    apply(...events) {
+      for (const event of events) state = reduce(state, event);
+    },
+    async settle() {
+      const settled = await settleCoverage(state, [], adapters);
+      state = settled.state;
+      return settled.commands;
+    },
+    refuse(...next) {
+      refusals.push(...next);
+    },
+    allow(command) {
+      refusals = refusals.filter((r) => r.command !== command);
+    },
+    status: () => status(state),
+    state: () => state,
+    zoneOf: (target) => zones.get(key(target)),
+  };
 }
 
 function key(target: SessionTarget): string {

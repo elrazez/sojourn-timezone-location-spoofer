@@ -1,4 +1,11 @@
 <!doctype html>
+<script>
+  // The first script in the document: what a page observes before anything else runs.
+  window.__first = {
+    zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    offset: new Date().getTimezoneOffset(),
+  };
+</script>
 <meta charset="utf-8">
 <title>Spoofer test page</title>
 <p>Spoofer test page</p>

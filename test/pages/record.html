@@ -1,0 +1,15 @@
+<!doctype html>
+<script>
+  // First script in the document, reported to the harness so a tab whose page object the harness
+  // can no longer talk to (a crashed or discarded one) can still say what it observed.
+  window.__first = {
+    zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    offset: new Date().getTimezoneOffset(),
+  };
+  navigator.sendBeacon(
+    '/record?zone=' + encodeURIComponent(window.__first.zone) + '&offset=' + window.__first.offset,
+  );
+</script>
+<meta charset="utf-8">
+<title>Spoofer recording page</title>
+<p>Spoofer recording page</p>

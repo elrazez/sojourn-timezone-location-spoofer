@@ -127,7 +127,7 @@ The Audit is the acceptance test: with a City selected, the diff between the cov
 
 ### Manual verification
 
-The bar's Cancel (badge reads `OFF`, popup shows Paused, Resume restores coverage and shows the bar again), and a service worker restart (stop the worker from `chrome://serviceworker-internals` while tabs are Covered, then confirm they stay Covered and a new tab is Covered).
+The bar's Cancel (badge reads `OFF`, popup shows Paused, Resume restores coverage and shows the bar again), and a service worker restart (stop the worker from `chrome://serviceworker-internals` while tabs are Covered, then confirm they stay Covered and a new tab is Covered). Added by phase 03, because the harness cannot drive either: a page prerendered through speculation rules and then activated by a click (the harness never prerenders at all, with or without Spoofer attached), and a tab discarded from `chrome://discards` and brought back (`chrome.tabs.discard` closes the harness's connection to the browser).
 
 ## Out of Scope
 
@@ -149,6 +149,6 @@ Each is bounded here, measured by the Audit, and named in the README with the me
 
 - **Shared-process zone window:** up to 1 s of the real zone in a tab whose renderer process lost its override when another tab left it.
 - **Position timestamp age:** `Date.now() - position.timestamp` up to 31 s.
-- **First-script gaps:** popups, prerendered pages, and shared workers that do not share a covered process, plus tabs leaving the New Tab Page if phase 03's test is red.
+- **First-script gaps:** popups, prerendered pages, and shared workers that do not share a covered process; tabs leaving the New Tab Page, measured by phase 03 at 10 misses in 10 loads, because Chrome refuses the attach until the next document has committed; and a tab created with its url already set, measured by phase 03 at 10 misses in 10 tabs against a server on the same machine, because `chrome.tabs.onCreated` reaches the service worker about 12 ms after the document request is already in flight. The second gap is about 25 ms wide: the same page served with 25 ms of latency misses none. Both tabs are Covered a few milliseconds later.
 - **The bar:** one `resize` and a smaller `innerHeight` on open tabs in a headed browser when Spoofer attaches.
 - **Back/forward cache eligibility (if the Audit shows it):** a covered tab's `notRestoredReasons` and `pageshow` `persisted` flag differing from the Baseline's.
