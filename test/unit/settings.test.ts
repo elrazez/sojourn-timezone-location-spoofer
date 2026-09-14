@@ -4,11 +4,13 @@ import { clearSelection, loadSettings, selectCity, setEnabled } from '../../src/
 import { metresApart } from '../oracle.js';
 
 // Catalog coordinates, written here so the test does not read them from the code it checks.
-const TOKYO = { latitude: 35.6762, longitude: 139.6503 };
 const OSAKA = { latitude: 34.6937, longitude: 135.5023 };
+// The draws run on Reykjavik, far enough north that a flat projection is a gross error and not a
+// rounding one.
+const REYKJAVIK = { latitude: 64.1466, longitude: -21.9426 };
 
-// cos(35.6762 degrees), written out rather than computed, so the scaling is a literal like the rest.
-const TOKYO_COSINE = 0.81234;
+// cos(64.1466 degrees), written out rather than computed, so the scaling is a literal like the rest.
+const REYKJAVIK_COSINE = 0.43607;
 
 function fakeStorage(): StorageAdapter {
   const values = new Map<string, unknown>();
@@ -62,9 +64,9 @@ const DRAWS = 200;
 test('a selected City reports a point within 2 km of it, and never the City itself', async () => {
   const points: { latitude: number; longitude: number; away: number }[] = [];
   for (let draw = 0; draw < DRAWS; draw += 1) {
-    const { coordinates } = await selectCity(fakeStorage(), 'tokyo');
+    const { coordinates } = await selectCity(fakeStorage(), 'reykjavik');
 
-    const away = metresApart(TOKYO, coordinates);
+    const away = metresApart(REYKJAVIK, coordinates);
     expect(away).toBeGreaterThan(0);
     expect(away).toBeLessThanOrEqual(2000);
     expect(coordinates.accuracy).toBe(Math.round(coordinates.accuracy));
@@ -80,14 +82,13 @@ test('a selected City reports a point within 2 km of it, and never the City itse
   expect(inside).toBeLessThanOrEqual(0.35);
 
   // The disc has to be as wide east to west as it is north to south on the ground. A degree of
-  // longitude at this latitude is only cos(35.6762 degrees) as wide as a degree of latitude, so a
-  // point placed on a flat projection comes out about a fifth narrow here, which a factor of 1.5
-  // still admits: this bound is the one that catches a gross projection error, and the fraction
-  // above is the one that catches a radius drawn uniform in length.
-  const northSouth = spread(points.map((point) => point.latitude - TOKYO.latitude));
-  const eastWest = spread(points.map((point) => (point.longitude - TOKYO.longitude) * TOKYO_COSINE));
-  expect(eastWest / northSouth).toBeGreaterThan(1 / 1.5);
-  expect(eastWest / northSouth).toBeLessThan(1.5);
+  // longitude at this latitude is only cos(64.1466 degrees) as wide as a degree of latitude, so a
+  // point placed on a flat projection reads 0.436 here, which this band refuses: the band is two
+  // hundred draws wide, and the fraction above is what catches a radius drawn uniform in length.
+  const northSouth = spread(points.map((point) => point.latitude - REYKJAVIK.latitude));
+  const eastWest = spread(points.map((point) => (point.longitude - REYKJAVIK.longitude) * REYKJAVIK_COSINE));
+  expect(eastWest / northSouth).toBeGreaterThan(0.85);
+  expect(eastWest / northSouth).toBeLessThan(1.18);
 });
 
 // How wide a set of offsets about zero sits: their root mean square, in the units they came in.

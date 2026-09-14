@@ -91,12 +91,9 @@ test('the Paused notice offers Resume, and Resume covers the tabs again', async 
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
 
   // No harness can dismiss Chrome's bar, so this is the state dismissing it leaves behind: Paused
-  // remembered in session storage, which is what a worker restart reads back. The write to local
-  // storage is what makes the worker read both again.
-  await worker.evaluate(async () => {
-    await chrome.storage.session.set({ paused: true });
-    await chrome.storage.local.set({ nudge: Date.now() });
-  });
+  // remembered in session storage, which is what a worker restart reads back. Nothing else is
+  // written: the session listener is what makes the worker read it.
+  await worker.evaluate(() => chrome.storage.session.set({ paused: true }));
 
   await expect(popup.getByText('Paused', { exact: true })).toBeVisible();
   await expect.poll(() => readZone(page)).toBe(BASELINE_ZONE);

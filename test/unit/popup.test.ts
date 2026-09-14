@@ -58,6 +58,9 @@ test('slice 2: tok lists Tokyo first, an empty query lists no City, and a miss i
 
   // One letter matches most of the Catalog, and a list nobody can tab past is worse than a short one.
   expect(view(reported(), 'a').results).toHaveLength(8);
+  // So the popup says there are more and to keep typing, which only a query with more says.
+  expect(view(reported(), 'a').more).toBe(true);
+  expect(view(reported(), 'tokyo').more).toBe(false);
 });
 
 test('slice 3: a Not Covered tab reads with its reason when Chrome named one, and generically otherwise', () => {

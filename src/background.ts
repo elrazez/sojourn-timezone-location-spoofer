@@ -42,6 +42,8 @@ async function step(events: readonly CoverageEvent[]): Promise<void> {
 }
 
 chromeStorage.onChange(() => void dispatch({ type: 'settings-changed' }));
+// Paused lives in session storage, so a write there is a change to re-derive from like any other.
+chromeSession.onChange(() => void dispatch({ type: 'settings-changed' }));
 chromeTabs.onCreated((tabId) => void dispatch({ type: 'tab-created', tabId }));
 chromeTabs.onUpdated((tabId, loading) => void dispatch({ type: 'tab-status', tabId, loading }));
 chromeTabs.onRemoved((tabId) => void dispatch({ type: 'tab-removed', tabId }));

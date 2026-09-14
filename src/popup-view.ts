@@ -24,6 +24,8 @@ export type View = {
   // The count and why, because a tab that is not Covered has to say so rather than go quiet.
   notCovered: string;
   results: Match[];
+  // More Cities matched than the list shows, so the line that says to keep typing is shown.
+  more: boolean;
   // The query matched no City, which is a thing to say and not an error.
   empty: boolean;
 };
@@ -45,7 +47,8 @@ export function view(status: CoverageStatus, query: string): View {
   const city = status.cityId === null ? undefined : getCity(status.cityId);
   // The Catalog answers an empty query with every City, and a popup that opens on all of them has
   // buried its own search box, so an empty query lists nothing at all.
-  const found = query.trim() === '' ? [] : searchCities(query).slice(0, MOST_RESULTS);
+  const matched = query.trim() === '' ? [] : searchCities(query);
+  const found = matched.slice(0, MOST_RESULTS);
   return {
     selection: city ? label(city) : '',
     enabled: status.enabled,
@@ -54,6 +57,7 @@ export function view(status: CoverageStatus, query: string): View {
     restricted: status.restricted > 0 ? `${tabs(status.restricted)} Restricted` : '',
     notCovered: status.notCovered.length === 0 ? '' : `${tabs(status.notCovered.length)} Not Covered: ${why(status)}`,
     results: found.map((match) => ({ cityId: match.id, name: label(match) })),
+    more: matched.length > MOST_RESULTS,
     empty: query.trim() !== '' && found.length === 0,
   };
 }

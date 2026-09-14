@@ -16,6 +16,7 @@ const REFRESH = 1000;
 
 const search = element<HTMLInputElement>('search');
 const results = element('results');
+const more = element('more');
 const empty = element('empty');
 const selection = element('selection');
 const state = element('state');
@@ -69,6 +70,7 @@ function paint(next: View): void {
   show(restricted, next.restricted);
   paused.hidden = !next.paused;
   enabled.checked = next.enabled;
+  more.hidden = !next.more;
   empty.hidden = !next.empty;
   // The rows are rebuilt only when they changed, because rebuilding them under the refresh would
   // take the focus out of the row the user had just tabbed to.
