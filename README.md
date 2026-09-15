@@ -1,8 +1,10 @@
 # Sojourn
 
-A Chrome extension with one job: websites see the time zone and geolocation of a city you pick, and nothing else about your browser changes.
+Chrome extension that spoofs your time zone and geolocation to any city, with no trace a website can detect. Fixes the VPN time zone mismatch. Timezone spoofer and location spoofer built on the DevTools Protocol: no injected scripts, zero dependencies.
 
-You pick a city in the popup. From then on every tab reports that city's IANA time zone through `Date`, `Intl` and `Temporal`, and coordinates near it through `navigator.geolocation`. Iframes, workers and service workers inside a covered page report the same values from their first line of script.
+![The Sojourn popup: Tokyo selected, two tabs covered](docs/popup.png)
+
+You pick a city in the popup. From then on every tab reports that city's IANA time zone through `Date`, `Intl` and `Temporal`, and coordinates near it through `navigator.geolocation`. Iframes, workers and service workers inside a covered page report the same values from their first line of script. Nothing else about your browser changes.
 
 Version 0.1.1. Every automated check is green, and the thirteen checks a browser cannot be scripted into doing, in [scripts/manual-check.sh](scripts/manual-check.sh), passed in a real Chrome on 2026-09-15.
 
@@ -31,6 +33,32 @@ The coordinates carry a small random offset generated once per install, up to 2 
 When a tab cannot be covered, the badge shows a red count and the popup names the reason. Sojourn never falls back to your real values quietly.
 
 [ADR-0001](docs/adr/0001-override-mechanism.md) records why this mechanism and not page script patching, [ADR-0002](docs/adr/0002-no-other-surface.md) the boundary it refuses to cross, and [ADR-0003](docs/adr/0003-new-tab-page-override.md) the new tab page.
+
+## Frequently asked
+
+### Does this fix the VPN time zone mismatch?
+
+Yes. Pick the city your VPN exits in and every tab reports that city's IANA time zone, so the clock the site reads and the country your IP address is in agree. It does not touch your IP address, so a city that does not match your exit leaves you easier to pick out, not harder.
+
+### Can I fake my browser location in Chrome?
+
+Yes. `navigator.geolocation` answers with coordinates near the city you picked, in the page and in every iframe, worker and service worker inside it, with a random offset of up to 2 km generated once per install so your point is not a known city centre. `test/e2e/geolocation.spec.ts` asserts what a covered page reads, field by field, against what the same page reads with no extension loaded.
+
+### Why do other timezone spoofer extensions get detected?
+
+Because they replace `Date`, `Intl` and the geolocation functions inside the page, and a replaced function looks replaced: `Function.prototype.toString`, property descriptors and stack frames all say so. Content scripts also never run in workers, so a service worker keeps answering with the real zone, which is the first place CreepJS looks. [docs/research/main-world-patching.md](docs/research/main-world-patching.md) catalogues fifty ways to see it, and [the Audit](#what-the-audit-proves-and-what-it-does-not) takes one probe for each of the fifty on every run, in ten contexts, against the same browser with no extension in it.
+
+### Does it work in Brave or incognito?
+
+It should work in any Chromium browser, because `chrome.debugger` and the two `Emulation` methods are Chromium's, not Chrome's. Nothing here has been tested on Brave, Edge, Arc or Opera: the harness runs Chromium and the manual checks ran in Chrome. Incognito works once you turn "Allow in Incognito" on, with one gap: Chrome lets no extension replace the new tab page in an incognito window, so the first site you open from a fresh incognito tab reads your real zone in its first script, which [docs/research/keeping-the-new-tab-page.md](docs/research/keeping-the-new-tab-page.md) reads out of Chromium's source.
+
+### Why does Chrome show a debugging bar?
+
+Because attaching `chrome.debugger` is what produces the override, and Chrome shows `"Sojourn" started debugging this browser` on every attach. That is the trade [ADR-0001](docs/adr/0001-override-mechanism.md) makes: the values come from Chrome's own engine, and the price is a bar you can see. Chrome's `--silent-debugger-extension-api` launch flag does suppress it, and the trade-off is a bad one: the flag is global, so it also hides the bar for every other extension that attaches a debugger, and that bar is the only notice you get that something is reading your pages.
+
+### Why did my New Tab Page change?
+
+Because Chrome refuses to let any extension touch a tab showing Chrome's own new tab page, so a site opened from one is already loading before Sojourn can reach it: 20 loads in 20 leaked the real zone to the site's first script out of Chrome's page, and 0 in 20 out of Sojourn's blank one. [ADR-0003](docs/adr/0003-new-tab-page-override.md) records the decision and that measurement.
 
 ## What it deliberately does not do
 
@@ -67,11 +95,11 @@ Every number here was measured on the machine that ran the phase it names, so ex
 
 ## Install
 
-Chrome cannot install a zip directly, so both paths end at the same place.
+Chrome cannot install a zip directly, so both paths end at Load unpacked.
 
-**From a packaged zip:** `sojourn-0.1.1.zip` is what `npm run package` produces, and what a release carries. Unzip it somewhere you will keep it, open `chrome://extensions`, turn Developer mode on, click "Load unpacked" and choose the unzipped folder.
+**From the release:** download `sojourn-0.1.1.zip` from [the latest release](https://github.com/elrazez/sojourn-timezone-location-spoofer/releases/latest), unzip it somewhere you will keep it, open `chrome://extensions`, turn Developer mode on, click "Load unpacked" and choose the unzipped folder.
 
-**From this repository:** run `npm install && npm run build`, then load the `extension/` folder the same way.
+**From this repository:** run `npm install && npm run build`, then load the `extension/` folder the same way. `npm run package` builds the same `sojourn-<version>.zip` the release carries.
 
 Chrome will say the extension changed the page shown on new tabs, and offer to change it back. Keep Sojourn's page; the reason is above.
 
