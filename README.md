@@ -1,6 +1,6 @@
 # Sojourn
 
-Chrome extension that spoofs your time zone and geolocation to any city, with no trace a website can detect. Fixes the VPN time zone mismatch. Timezone spoofer and location spoofer built on the DevTools Protocol: no injected scripts, zero dependencies.
+Chrome extension that spoofs your time zone and geolocation to any city and passes a differential audit against a stock browser: no injected scripts, zero dependencies. Fixes the VPN time zone mismatch. A timezone spoofer and location spoofer built on the DevTools Protocol.
 
 ![The Sojourn popup: Tokyo selected, two tabs covered](docs/popup.png)
 
