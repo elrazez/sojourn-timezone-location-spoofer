@@ -4,7 +4,7 @@
 //   extraArgs    -> switches this test's Chromium needs, set with test.use
 //   worker       -> the extension's service worker, once it has started
 //   extensionId  -> the id in the service worker's url
-//   spoofer      -> drives the extension's own Settings and reads the status Coverage exposes
+//   sojourn      -> drives the extension's own Settings and reads the status Coverage exposes
 //   popup        -> popup.html open as a page, which is the only way a harness can reach it
 //   disabled     -> a second browser with the extension loaded, for a run with it switched off
 //   origins      -> test/pages and test/audit served on two origins Chrome treats as distinct sites
@@ -66,8 +66,8 @@ export type PositionReading =
     }
   | { ok: false; code: number; message: string };
 
-type SpooferWorker = {
-  spoofer: {
+type SojournWorker = {
+  sojourn: {
     selectCity(cityId: string): Promise<Selection>;
     clearSelection(): Promise<void>;
     setEnabled(enabled: boolean): Promise<void>;
@@ -75,7 +75,7 @@ type SpooferWorker = {
   };
 };
 
-export type Spoofer = {
+export type Sojourn = {
   select(cityId: string): Promise<Selection>;
   clear(): Promise<void>;
   enable(enabled: boolean): Promise<void>;
@@ -90,7 +90,7 @@ export type Origins = { localhost: string; loopback: string; readings: FirstRead
 export { expect };
 
 // A browser with the extension loaded, its service worker, and the handle onto its Settings.
-export type Loaded = { context: BrowserContext; worker: Worker; spoofer: Spoofer };
+export type Loaded = { context: BrowserContext; worker: Worker; sojourn: Sojourn };
 
 export const test = base.extend<{
   extraArgs: string[];
@@ -99,7 +99,7 @@ export const test = base.extend<{
   disabled: Loaded;
   worker: Worker;
   extensionId: string;
-  spoofer: Spoofer;
+  sojourn: Sojourn;
   popup: Page;
   origins: Origins;
 }>({
@@ -109,7 +109,7 @@ export const test = base.extend<{
     await use(browser.context);
     await browser.done();
   },
-  // The same browser with nothing loaded into it: what a page does without Spoofer at all.
+  // The same browser with nothing loaded into it: what a page does without Sojourn at all.
   baseline: async ({ extraArgs }, use) => {
     const browser = await launch(extraArgs, true);
     await use(browser.context);
@@ -127,8 +127,8 @@ export const test = base.extend<{
   extensionId: async ({ worker }, use) => {
     await use(new URL(worker.url()).host);
   },
-  spoofer: async ({ worker }, use) => {
-    await use(spooferOf(worker));
+  sojourn: async ({ worker }, use) => {
+    await use(sojournOf(worker));
   },
   // A tab of its own, because a harness cannot click the toolbar icon. It is a tab like any other
   // as far as Coverage is concerned, which is why the slices that count tabs account for it.
@@ -198,27 +198,27 @@ export async function launchExtension(
     headless,
   );
   const worker = await workerOf(browser.context);
-  return { context: browser.context, worker, spoofer: spooferOf(worker), done: browser.done };
+  return { context: browser.context, worker, sojourn: sojournOf(worker), done: browser.done };
 }
 
 const workerOf = async (context: BrowserContext): Promise<Worker> =>
   context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
 
-function spooferOf(worker: Worker): Spoofer {
+function sojournOf(worker: Worker): Sojourn {
   return {
     // The Selection comes back out of storage, not out of the call, so a test compares a page
     // against what the extension stored rather than against what one function returned.
     select: async (cityId) => {
-      await worker.evaluate((id) => (globalThis as unknown as SpooferWorker).spoofer.selectCity(id), cityId);
+      await worker.evaluate((id) => (globalThis as unknown as SojournWorker).sojourn.selectCity(id), cityId);
       return worker.evaluate(async () => (await chrome.storage.local.get('selection')).selection as Selection);
     },
     clear: async () => {
-      await worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.clearSelection());
+      await worker.evaluate(() => (globalThis as unknown as SojournWorker).sojourn.clearSelection());
     },
     enable: async (enabled) => {
-      await worker.evaluate((on) => (globalThis as unknown as SpooferWorker).spoofer.setEnabled(on), enabled);
+      await worker.evaluate((on) => (globalThis as unknown as SojournWorker).sojourn.setEnabled(on), enabled);
     },
-    status: () => worker.evaluate(() => (globalThis as unknown as SpooferWorker).spoofer.status()),
+    status: () => worker.evaluate(() => (globalThis as unknown as SojournWorker).sojourn.status()),
   };
 }
 
@@ -240,7 +240,7 @@ export async function openTab(
   return { page, tabId };
 }
 
-// A tab the service worker opened where a person opens one, which is Spoofer's New Tab Page,
+// A tab the service worker opened where a person opens one, which is Sojourn's New Tab Page,
 // Covered while it sits there, and only then sent where they typed. chrome.tabs.update is Chrome
 // navigating the tab, the move the omnibox makes. Measured, not asserted: navigating in the same
 // millisecond the tab is created misses 6 times in 10, because the attach is then racing the
@@ -313,7 +313,7 @@ async function launch(
   args: string[],
   headless = true,
 ): Promise<{ context: BrowserContext; done: () => Promise<void> }> {
-  const userDataDir = await mkdtemp(join(tmpdir(), 'spoofer-'));
+  const userDataDir = await mkdtemp(join(tmpdir(), 'sojourn-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
     args,

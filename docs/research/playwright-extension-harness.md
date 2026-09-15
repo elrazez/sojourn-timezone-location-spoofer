@@ -1,6 +1,6 @@
 # R4: Driving Chromium with the extension loaded (Playwright harness)
 
-Scope: how the Playwright harness launches Chromium with Spoofer loaded, how Playwright's own CDP connection coexists with the extension's `chrome.debugger` sessions, which Playwright options touch the Override, how to force and verify an out-of-process iframe, and whether the debugger infobar can create a Trace. Versions: Playwright 1.63.0 (npm `latest`, published 2026-09-04), which bundles Chromium 153.0.8010.12 ("Chrome for Testing", browsers revision 1243). Chrome Stable per chromiumdash on 2026-09-14 is 154.0.8037.17 (Mac) and 153.0.8010.36 (Linux). Playwright quotes come from tag `v1.63.0`. Chromium quotes come from `main` as fetched on 2026-09-14. For the Playwright files cited, only `crPage.ts` line numbers differ between `main` and the tag.
+Scope: how the Playwright harness launches Chromium with Sojourn loaded, how Playwright's own CDP connection coexists with the extension's `chrome.debugger` sessions, which Playwright options touch the Override, how to force and verify an out-of-process iframe, and whether the debugger infobar can create a Trace. Versions: Playwright 1.63.0 (npm `latest`, published 2026-09-04), which bundles Chromium 153.0.8010.12 ("Chrome for Testing", browsers revision 1243). Chrome Stable per chromiumdash on 2026-09-14 is 154.0.8037.17 (Mac) and 153.0.8010.36 (Linux). Playwright quotes come from tag `v1.63.0`. Chromium quotes come from `main` as fetched on 2026-09-14. For the Playwright files cited, only `crPage.ts` line numbers differ between `main` and the tag.
 
 ## 1. Loading the MV3 extension
 
@@ -62,7 +62,7 @@ if (!serviceWorker)
 - Service-worker targets are wrapped and emitted as events (L199-L202): `if (targetInfo.type === 'service_worker') { const serviceWorker = new CRServiceWorker(context, session, targetInfo.url); ... context.emit(CRBrowserContext.CREvents.ServiceWorker, serviceWorker);`.
 - Extension id, from the docs fixture (L173-L177): `const extensionId = serviceWorker.url().split('/')[2];`.
 - Idle suspension (docs L106-L108): "Chrome MV3 service workers are automatically suspended after ~30 seconds of inactivity ... Playwright keeps the **same [Worker] object alive**, no new `'serviceworker'` event is emitted."
-- Relevant to Spoofer: while an extension debugger session is attached, the worker is kept alive. `debugger_api.cc` L603-L612: `process_manager->IncrementServiceWorkerKeepaliveCount(*extension_service_worker_id_, content::ServiceWorkerExternalRequestTimeoutType::kDoesNotTimeout, Activity::DEBUGGER, ...)`.
+- Relevant to Sojourn: while an extension debugger session is attached, the worker is kept alive. `debugger_api.cc` L603-L612: `process_manager->IncrementServiceWorkerKeepaliveCount(*extension_service_worker_id_, content::ServiceWorkerExternalRequestTimeoutType::kDoesNotTimeout, Activity::DEBUGGER, ...)`.
 
 **Popup.** Docs L229: `await page.goto(\`chrome-extension://${extensionId}/popup.html\`);`. This renders `popup.html` in a normal tab, not in the toolbar popup window.
 
@@ -101,7 +101,7 @@ The post lists no limits.
 - `inspector_emulation_agent.cc` L1078-L1080 maps that status to `"Timezone override is already in effect"`.
 - Playwright silently swallows the error. `crPage.ts` L1213-L1214: `if (exception.message.includes('Timezone override is already in effect')) return;`.
 - Consequence: if `timezoneId` were set and the extension set a City's zone, whichever client came second loses. Playwright would give no signal.
-- Hazard for Spoofer itself: a second session setting the *same* zone gets a `nullptr` handle (`if (result.handle) { timezone_override_ = ...` L1074-L1075). The override is released by the first handle: `~TimeZoneOverride() { ClearTimeZoneOverride(); }` (`timezone_controller.h` L64), reached from `disable()` via `timezone_override_.reset();` (`inspector_emulation_agent.cc` L356). So when the first session goes away, a second Covered tab in the same renderer process reverts to the real zone.
+- Hazard for Sojourn itself: a second session setting the *same* zone gets a `nullptr` handle (`if (result.handle) { timezone_override_ = ...` L1074-L1075). The override is released by the first handle: `~TimeZoneOverride() { ClearTimeZoneOverride(); }` (`timezone_controller.h` L64), reached from `disable()` via `timezone_override_.reset();` (`inspector_emulation_agent.cc` L356). So when the first session goes away, a second Covered tab in the same renderer process reverts to the real zone.
 - OPEN: whether same-site Covered tabs actually share a renderer process in practice. Cheapest experiment: open two same-site tabs, attach the extension to both with the same zone, detach from the first, then read `Intl.DateTimeFormat().resolvedOptions().timeZone` in the second.
 
 **Conflict 2: the geolocation Override is per WebContents, and the last writer wins.**
@@ -118,7 +118,7 @@ The post lists no limits.
 - Playwright resumes only its own sessions: `this._client.send('Runtime.runIfWaitingForDebugger')` (`crPage.ts` L575) and `crServiceWorker.ts` L70.
 - In Chromium each `TargetHandler` defers the child's navigation with its own throttle. `target_handler.cc` L428-L438: `if (new_host && target_handler_->AutoAttach(..., wait_for_debugger_on_start) && wait_for_debugger_on_start) { SetThrottledAgentHost(new_host.get()); } ... return is_deferring_ ? DEFER : PROCEED;`.
 - That throttle is released only by the same child session's resume callback (L485-L487 `resume_callback = base::BindOnce(&Session::ResumeIfThrottled, ...)`; L559-L563 `throttle_->Clear();`).
-- Reading: neither client can resume the other's pause. If Spoofer auto-attaches with `waitForDebuggerOnStart: true`, it must send `Runtime.runIfWaitingForDebugger` on each child session it gets.
+- Reading: neither client can resume the other's pause. If Sojourn auto-attaches with `waitForDebuggerOnStart: true`, it must send `Runtime.runIfWaitingForDebugger` on each child session it gets.
 - OPEN: confirm that one un-resumed client stalls the OOPIF load even after Playwright resumes. Cheapest experiment: an extension build that auto-attaches without resuming, plus the two-origin page from section 4. Expect the iframe `load` event never to fire.
 
 **Playwright and the extension service worker.**
@@ -249,7 +249,7 @@ The post lists no limits.
 - Chromium `main`: content/browser/devtools/{devtools_agent_host_impl.cc, render_frame_devtools_agent_host.cc, devtools_session.cc, protocol/target_handler.cc, protocol/emulation_handler.cc, protocol/browser_handler.cc}; chrome/browser/extensions/api/debugger/{debugger_api.cc, extension_dev_tools_infobar_delegate.cc, .h}; chrome/browser/extensions/{extension_service.cc, extension_util.cc, chrome_extensions_browser_client.cc}; extensions/browser/extension_registrar.cc; extensions/common/extension_features.cc; build/config/chrome_build.gni; build/BUILD.gn; third_party/blink/renderer/core/timezone/timezone_controller.{cc,h}; third_party/blink/renderer/core/inspector/inspector_emulation_agent.cc; third_party/blink/public/devtools_protocol/domains/Target.pdl; content/browser/site_info.cc; content/public/browser/site_isolation_policy.cc; content/public/common/content_switches.cc; chrome/browser/chrome_content_browser_client.cc; chrome/common/chrome_features.cc; net/base/registry_controlled_domains/registry_controlled_domain.cc; net/base/url_util.cc; base/i18n/icu_util.cc; services/device/time_zone_monitor/{time_zone_monitor_linux.cc, time_zone_monitor_mac.mm}; components/permissions/permission_request_manager.cc
 - https://chromium.googlesource.com/chromium/deps/icu/+/main/source/common/putil.cpp; https://chromium.googlesource.com/v8/v8/+/main/src/date/date.cc
 
-## Consequences for Spoofer
+## Consequences for Sojourn
 
 - Launch covered runs with `chromium.launchPersistentContext(tmpDir, { channel: 'chromium', args: ['--disable-extensions-except=<dist>', '--load-extension=<dist>'], env: { ...process.env, TZ: 'Pacific/Kiritimati' } })`. Launch the Baseline identically without `args`. Use no `ignoreDefaultArgs`.
 - Get the extension id from `(context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker')).url().split('/')[2]`; open the popup with `page.goto('chrome-extension://<id>/popup.html')`.

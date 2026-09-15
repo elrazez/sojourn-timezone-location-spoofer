@@ -15,8 +15,8 @@ import {
 
 const TOKYO = { zone: TOKYO_ZONE, offset: TOKYO_OFFSET };
 
-test('a cross-origin frame observes Asia/Tokyo in its first script', async ({ context, origins, spoofer }) => {
-  await spoofer.select('tokyo');
+test('a cross-origin frame observes Asia/Tokyo in its first script', async ({ context, origins, sojourn }) => {
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
 
   await page.goto(`${origins.localhost}frames.html?child=${origins.loopback}frame.html`);
@@ -30,9 +30,9 @@ test('a cross-origin frame observes Asia/Tokyo in its first script', async ({ co
 test('a dedicated worker, a module worker and a service worker each observe Asia/Tokyo on their first line', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
 
   await page.goto(`${origins.localhost}workers.html`);
@@ -43,8 +43,8 @@ test('a dedicated worker, a module worker and a service worker each observe Asia
   expect(workers).toEqual({ dedicated: TOKYO, module: TOKYO, service: TOKYO });
 });
 
-test('a same-site popup observes Asia/Tokyo in its first script', async ({ context, origins, spoofer }) => {
-  await spoofer.select('tokyo');
+test('a same-site popup observes Asia/Tokyo in its first script', async ({ context, origins, sojourn }) => {
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(`${origins.localhost}opener.html?target=${origins.localhost}index.html`);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -56,12 +56,12 @@ test('a same-site popup observes Asia/Tokyo in its first script', async ({ conte
   expect(await readFirst(popup)).toMatchObject(TOKYO);
 });
 
-test('a cross-site popup observes Asia/Tokyo once Spoofer has attached', async ({
+test('a cross-site popup observes Asia/Tokyo once Sojourn has attached', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(`${origins.localhost}opener.html?target=${origins.loopback}index.html`);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -74,13 +74,13 @@ test('a cross-site popup observes Asia/Tokyo once Spoofer has attached', async (
   await expect.poll(() => readZone(popup)).toBe(TOKYO_ZONE);
 });
 
-test('a prerendered page observes Asia/Tokyo when it is activated', async ({ context, origins, spoofer }) => {
-  // Measured: no prerender happens here at all, with or without Spoofer. No page target with
+test('a prerendered page observes Asia/Tokyo when it is activated', async ({ context, origins, sojourn }) => {
+  // Measured: no prerender happens here at all, with or without Sojourn. No page target with
   // subtype prerender appears, and the navigation reports activationStart 0 and type navigate, so
   // the test would pass without testing anything. On the brief's Manual verification line instead.
   test.skip(true, 'Chromium under the harness never prerenders, so activation cannot be driven');
 
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(`${origins.localhost}prerender.html`);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);

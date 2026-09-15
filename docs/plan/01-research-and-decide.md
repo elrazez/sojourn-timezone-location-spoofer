@@ -1,12 +1,12 @@
 # Phase 01: research and decide
 
-You are building Spoofer, the extension described in `docs/plan/00-brief.md`. This phase settles the decision everything else hangs on, the override mechanism, from primary sources and a grilling round with the user. Nothing is implemented in this phase.
+You are building Sojourn, the extension described in `docs/plan/00-brief.md`. This phase settles the decision everything else hangs on, the override mechanism, from primary sources and a grilling round with the user. Nothing is implemented in this phase.
 
 Start by reading `CLAUDE.md`, `CONTEXT.md`, `docs/plan/00-brief.md`, and `docs/plan/README.md`. Record `git rev-parse HEAD`.
 
 ## Step 1: research, in parallel
 
-Call the Skill tool with `research`. Dispatch one background agent per question below, all at once. Each agent writes one file under `docs/research/`, cites a primary source for every claim (Chrome extension docs, the DevTools Protocol reference, Chromium source, Playwright docs and source, the CreepJS source, the W3C spec), quotes the line that settles the claim, and marks any claim it cannot settle as `OPEN:` with what would settle it. A secondary source may point at a primary source; it never carries a claim on its own. Each file ends with a section `## Consequences for Spoofer` of at most ten lines.
+Call the Skill tool with `research`. Dispatch one background agent per question below, all at once. Each agent writes one file under `docs/research/`, cites a primary source for every claim (Chrome extension docs, the DevTools Protocol reference, Chromium source, Playwright docs and source, the CreepJS source, the W3C spec), quotes the line that settles the claim, and marks any claim it cannot settle as `OPEN:` with what would settle it. A secondary source may point at a primary source; it never carries a claim on its own. Each file ends with a section `## Consequences for Sojourn` of at most ten lines.
 
 **R1 `chrome-debugger-api.md`: the `chrome.debugger` API as it exists in current stable Chrome.**
 - Attach and detach semantics; the error strings for "already attached" and restricted targets; which targets are restricted (`chrome://`, the Web Store, other extensions, `file://`).
@@ -55,7 +55,7 @@ Read all five files in full. Write, in the session, the list of places where a f
 
 Call the Skill tool twice, with `grilling` and with `domain-modeling`. Open with one round that covers the whole frontier below, plus the questions from step 2, each with your recommended answer so the user can accept in a word. Then keep asking rounds until the frontier is empty. Facts are yours to find (dispatch a sub-agent for anything missing); decisions are the user's.
 
-- **Q1 Mechanism.** B (DevTools Protocol through `chrome.debugger`) or A (MAIN-world script). Recommend B: the engine produces every value, so there is no Trace to spoof and no arms race. State the cost in one line: a persistent "Spoofer started debugging this browser" bar and a `debugger` permission warning at install. State A's cost in one line: residual Traces in cross-origin and module workers, and a generated-per-City script or a user toggle for configuration.
+- **Q1 Mechanism.** B (DevTools Protocol through `chrome.debugger`) or A (MAIN-world script). Recommend B: the engine produces every value, so there is no Trace to spoof and no arms race. State the cost in one line: a persistent "Sojourn started debugging this browser" bar and a `debugger` permission warning at install. State A's cost in one line: residual Traces in cross-origin and module workers, and a generated-per-City script or a user toggle for configuration.
 - **Q2 The bar.** With B, cancelling the bar detaches every tab. Recommend: the extension enters Paused, badge reads `OFF`, the popup explains and offers Resume; no automatic re-attach, because re-attaching re-shows the bar and fights the user.
 - **Q3 DevTools.** Whatever R1 found: if opening DevTools detaches the extension from that tab, recommend treating it like any uncovered tab (badge shows the count) and noting it in the README.
 - **Q4 Service worker lifetime.** Whatever R1 found: if idle termination drops sessions, recommend the documented keep-alive, and add it to the brief's behaviour decisions.
@@ -82,7 +82,7 @@ Step 3 is complete when the user confirms a shared understanding and no question
 
 ## Done when
 
-- [ ] `ls docs/research/` shows the five files and `grep -L "Consequences for Spoofer" docs/research/*.md` prints nothing.
+- [ ] `ls docs/research/` shows the five files and `grep -L "Consequences for Sojourn" docs/research/*.md` prints nothing.
 - [ ] `docs/adr/0001-override-mechanism.md` exists and names the rejected option.
 - [ ] `grep -n -i "pending\|recommended\|assumes B" docs/plan/00-brief.md` prints nothing.
 - [ ] `CONTEXT.md` carries every term settled in the grill.

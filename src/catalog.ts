@@ -3,7 +3,7 @@
 //   getCity(id)         -> the City with that id, or undefined
 //   searchCities(query) -> every City whose name or country contains the query, case-insensitive,
 //                          in catalog order; an empty query matches every City
-// Invariants: ids are unique; `zone` is the IANA id Intl reads back unchanged, so the id Spoofer
+// Invariants: ids are unique; `zone` is the IANA id Intl reads back unchanged, so the id Sojourn
 // sends is the id a page reads. For a handful of zones that is CLDR's older alias (Asia/Calcutta,
 // not Asia/Kolkata), which is the id an unmodified Chrome reports for the same system zone.
 // latitude is in [-90, 90] and longitude in [-180, 180].

@@ -22,7 +22,7 @@ Step 1 is complete when `bash -n scripts/manual-check.sh` passes. The human run 
 
 ## Step 2: packaging
 
-Add a `package` script that builds, then zips `extension/` (with `dist/` inside it and nothing from `src/` or `test/`) to `spoofer-<version>.zip` using the system `zip`. The version is `package.json`'s and `manifest.json`'s, and a test asserts they are equal.
+Add a `package` script that builds, then zips `extension/` (with `dist/` inside it and nothing from `src/` or `test/`) to `sojourn-<version>.zip` using the system `zip`. The version is `package.json`'s and `manifest.json`'s, and a test asserts they are equal.
 
 ## Step 3: README
 
@@ -43,7 +43,7 @@ Amended by the control center: a phase tags a release candidate, never the relea
 ## Done when
 
 - [ ] `scripts/manual-check.sh` exists, is executable, and `bash -n` passes; the human run of it comes after the phase.
-- [ ] `npm run package` produces `spoofer-0.1.0.zip` and `unzip -l` shows `manifest.json` at its root and no `src/` or `test/` entries.
+- [ ] `npm run package` produces `sojourn-0.1.0.zip` and `unzip -l` shows `manifest.json` at its root and no `src/` or `test/` entries.
 - [ ] Both reviews ran and their remaining judgement calls are listed in the session.
 - [ ] `README.md` links the wizard and states the mechanism, the bar, and the non-goals.
 - [ ] `git tag --list 'v0.1.0-rc*'` prints this phase's release candidate tag.

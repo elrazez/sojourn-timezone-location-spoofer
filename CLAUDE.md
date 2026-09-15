@@ -1,4 +1,4 @@
-# Spoofer
+# Sojourn
 
 Chrome extension that makes websites see the geolocation and time zone of a City the user picks. Nothing else. The product brief (the spec every phase is reviewed against) is `docs/plan/00-brief.md`; the build runs as numbered prompts under `docs/plan/`.
 

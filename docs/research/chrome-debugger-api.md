@@ -44,7 +44,7 @@ Notes that settle the table:
 | `chrome.tabs.create` | `tabs.onCreated` in the service worker | 6 to 12 ms | 25 ms |
 | `tabs.onCreated` | first refusal | 4 to 10 ms, median 6 | 365 ms |
 
-Harness: headless Chromium 153 with the extension loaded and no Selection, so Spoofer itself never attaches; probe resolution is one `detach` round trip, 0.5 to 2 ms warm. Consequences: a new tab has single-digit milliseconds of reach once the worker hears about it, which is why Coverage covers a new tab off the service worker's queue; and a tab already sitting on that page can never be attached, detached or sent anything. The tests that pin the behaviour, all in `test/e2e/lifecycle.spec.ts`: "a new tab shows Spoofer blank New Tab Page and is Covered within one reconcile tick", "a tab already showing the New Tab Page when Spoofer starts covering is Restricted, and what it opens next misses" (attach refused), and "Disabling reaches a tab on the New Tab Page only once that tab goes somewhere" (detach refused). ADR-0003 records the decision that rests on this.
+Harness: headless Chromium 153 with the extension loaded and no Selection, so Sojourn itself never attaches; probe resolution is one `detach` round trip, 0.5 to 2 ms warm. Consequences: a new tab has single-digit milliseconds of reach once the worker hears about it, which is why Coverage covers a new tab off the service worker's queue; and a tab already sitting on that page can never be attached, detached or sent anything. The tests that pin the behaviour, all in `test/e2e/lifecycle.spec.ts`: "a new tab shows Sojourn blank New Tab Page and is Covered within one reconcile tick", "a tab already showing the New Tab Page when Sojourn starts covering is Restricted, and what it opens next misses" (attach refused), and "Disabling reaches a tab on the New Tab Page only once that tab goes somewhere" (detach refused). ADR-0003 records the decision that rests on this.
 
 **`runtime_blocked_hosts` is all-or-nothing and new in 154.** The attach code:
 
@@ -99,7 +99,7 @@ So a child event arrives as `source = { tabId, sessionId }`. `Target.attachedToT
 - In source, the content layer creates its handlers for every client (`render_frame_devtools_agent_host.cc` 406-483), and each handler applies its own per-method gates.
 - The Chrome layer lets untrusted clients reach only `PageHandler, EmulationHandler, TargetHandler, WebMCPHandler` among its own handlers (`chrome/browser/devtools/chrome_devtools_session.cc` 42-48).
 - Emulation and Target are available either way.
-- `OPEN:` where the documented list is enforced as a list, if anywhere. This does not affect Spoofer.
+- `OPEN:` where the documented list is enforced as a list, if anywhere. This does not affect Sojourn.
 
 ## 3. The "started debugging this browser" infobar
 
@@ -155,7 +155,7 @@ So a child event arrives as `source = { tabId, sessionId }`. `Target.attachedToT
 - *Time zone* is renderer-process-wide and exclusive:
   - `if (HasTimeZoneOverride()) { ... return {TimeZoneOverrideStatus::kAlreadyInEffect, nullptr}; }`. The exception is `if (timezone_id == instance().TimeZoneIdOverride()) { return {TimeZoneOverrideStatus::kSuccess, nullptr}; }` (`third_party/blink/renderer/core/timezone/timezone_controller.cc` 154-162).
   - The agent surfaces the error as `"Timezone override is already in effect"` and keeps the handle only when it created the override (`inspector_emulation_agent.cc` 1067-1079).
-  - So if DevTools (Sensors panel) or another extension already holds a time zone override in that renderer, Spoofer's call fails. If Spoofer holds it, theirs fails.
+  - So if DevTools (Sensors panel) or another extension already holds a time zone override in that renderer, Sojourn's call fails. If Sojourn holds it, theirs fails.
 - *Geolocation* is per WebContents and last writer wins: `auto* geolocation_context = GetWebContents()->GetGeolocationContext(); ... geolocation_context->SetOverride(std::move(override_result));` (`content/browser/devtools/protocol/emulation_handler.cc` 584, 615).
 - `OPEN:` whether opening DevTools (with persisted Sensors settings) sends any Emulation override without user action. Settle with a 20-line experiment: attach, set both overrides, open DevTools, read `Intl.DateTimeFormat().resolvedOptions().timeZone` and `getCurrentPosition` in the page.
 
@@ -269,13 +269,13 @@ So a child event arrives as `source = { tabId, sessionId }`. `Target.attachedToT
   - `301cdb469a` (5 s autoclose)
   - `d06efdfdcd` (global infobar)
 
-## Consequences for Spoofer
+## Consequences for Sojourn
 
 1. **Chrome floor is 125** (flat `sessionId`), which already covers the 118 worker keepalive. Attach from the service worker so the session itself is the keep-alive; no alarm or port hack is needed.
 2. **Covered cannot mean "attached".** `target_closed` fires on restricted navigations with the tab still open, and on same-process time zone loss nothing fires at all. Coverage must be re-verified per tab (the popup count and badge), not inferred from session state.
-3. **The bar is global and shows for the whole time Spoofer is Enabled**, on every tab of every window. Cancel detaches every tab with `canceled_by_user`. Treat that reason as the user turning Enabled off, and fail loud, instead of re-attaching.
+3. **The bar is global and shows for the whole time Sojourn is Enabled**, on every tab of every window. Cancel detaches every tab with `canceled_by_user`. Treat that reason as the user turning Enabled off, and fail loud, instead of re-attaching.
 4. **Restricted and Not Covered tabs are never Covered.** Restricted, never on the badge: `chrome://`, all of `chrome.google.com` and `chromewebstore.google.com`. Not Covered, counted on the badge: `file://` without file access, interstitials, and pages framing another extension.
-5. **DevTools coexists** with no detach. Its Sensors time zone collides with Spoofer's (`Timezone override is already in effect`) and its geolocation overwrites Spoofer's. Surface a failed `setTimezoneOverride` as not Covered.
+5. **DevTools coexists** with no detach. Its Sensors time zone collides with Sojourn's (`Timezone override is already in effect`) and its geolocation overwrites Sojourn's. Surface a failed `setTimezoneOverride` as not Covered.
 6. **Set the Override on every auto-attached child session and call `Target.setAutoAttach` again in each child**, because auto-attach is not recursive. Only `setAutoAttach` is allowed in the Target domain.
 7. **Before relying on the design, run the Audit against the OPEN items:** same-process time zone ownership, geolocation cleanup on detach, prerender and BFCache, discard, and the first-script TDZ after navigation.
 8. **Enterprise installs with `runtime_blocked_hosts` or `DisableScreenshots` cannot attach at all in 154.** Report that as not Covered with the policy error.

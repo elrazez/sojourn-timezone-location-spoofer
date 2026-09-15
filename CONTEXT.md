@@ -1,4 +1,4 @@
-# Spoofer
+# Sojourn
 
 A Chrome extension that presents websites with the geolocation and time zone of a City the user picks, and leaves no other observable difference.
 
@@ -29,7 +29,7 @@ The time zone and coordinates a covered page observes in place of the real ones.
 _Avoid_: spoofed values, fake values
 
 **Session**:
-The connection Chrome gives Spoofer over one thing it can talk to: a tab, or a frame, worker or service worker inside that tab, which is a child Session of the tab's. An Override is sent to a Session. Distinct from a Context, which is the JavaScript global a Probe is read in, and which a Session is how Spoofer reaches.
+The connection Chrome gives Sojourn over one thing it can talk to: a tab, or a frame, worker or service worker inside that tab, which is a child Session of the tab's. An Override is sent to a Session. Distinct from a Context, which is the JavaScript global a Probe is read in, and which a Session is how Sojourn reaches.
 _Avoid_: connection, attachment, debuggee, target
 
 **Covered**:
@@ -45,11 +45,11 @@ A tab that is due the Override and has not observed it yet, because it is still 
 _Avoid_: in progress, waiting, unknown
 
 **Restricted**:
-A tab whose top-level page no extension may touch and whose refusal names no other kind of tab, such as a browser settings page or the Chrome Web Store. It is neither Covered nor Not Covered and never counts on the badge. Another extension's page is not one: Chrome refuses it in the same words as a web page framing an extension's iframe, so Spoofer counts it Not Covered.
+A tab whose top-level page no extension may touch and whose refusal names no other kind of tab, such as a browser settings page or the Chrome Web Store. It is neither Covered nor Not Covered and never counts on the badge. Another extension's page is not one: Chrome refuses it in the same words as a web page framing an extension's iframe, so Sojourn counts it Not Covered.
 _Avoid_: blocked, excluded, skipped
 
 **Sealed**:
-A tab Chrome refuses every `chrome.debugger` call about, because the url it shows is a `chrome://` one. The session Spoofer already holds stands, so a Sealed tab can be Covered and out of reach at the same time.
+A tab Chrome refuses every `chrome.debugger` call about, because the url it shows is a `chrome://` one. The session Sojourn already holds stands, so a Sealed tab can be Covered and out of reach at the same time.
 _Avoid_: locked, unreachable, frozen
 
 **Paused**:
@@ -61,15 +61,15 @@ The user-set switch. Disabled means every tab observes real values and the badge
 _Avoid_: active, on/off, running
 
 **Badge**:
-The text Chrome shows on Spoofer's toolbar icon: `OFF` when the Override is off, the number of Not Covered tabs in red when there are any, and nothing at all otherwise.
+The text Chrome shows on Sojourn's toolbar icon: `OFF` when the Override is off, the number of Not Covered tabs in red when there are any, and nothing at all otherwise.
 _Avoid_: counter, indicator, icon
 
 **Popup**:
-Spoofer's one screen: a search over the Catalog, the Selection, the Enabled switch, what is Covered, and the Paused notice with its Resume. A window a page opened for itself is not this, even where the brief calls that a popup too.
+Sojourn's one screen: a search over the Catalog, the Selection, the Enabled switch, what is Covered, and the Paused notice with its Resume. A window a page opened for itself is not this, even where the brief calls that a popup too.
 _Avoid_: panel, dialog, options page
 
 **New Tab Page**:
-The blank page of Spoofer's own that Chrome shows in every new tab, which exists so a tab is attachable before it goes anywhere. Chrome's own New Tab Page is not one Spoofer may attach to.
+The blank page of Sojourn's own that Chrome shows in every new tab, which exists so a tab is attachable before it goes anywhere. Chrome's own New Tab Page is not one Sojourn may attach to.
 _Avoid_: start page, home page, blank tab
 
 **Trace**:

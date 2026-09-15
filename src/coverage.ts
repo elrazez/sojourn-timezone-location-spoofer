@@ -31,7 +31,7 @@ type Send = { at: number; error?: string };
 export type SendKind = 'zone' | 'autoAttach' | 'resumed' | 'geolocation';
 
 // attach is absent until the first try; present without an error means the session is ours.
-// refused is the last answer Chrome gave about a Sealed tab, which is what stops Spoofer asking
+// refused is the last answer Chrome gave about a Sealed tab, which is what stops Sojourn asking
 // again until the next tick.
 type Tab = { loading: boolean; loadingSince: number; attach?: Send; refused?: Send };
 
@@ -125,7 +125,7 @@ const RESTRICTED = [
 const ALREADY_OURS = 'Another debugger is already attached';
 
 // And this when the session is not ours after all, so the attach has to be made again: another
-// client held the tab when Spoofer attached, and every send since has gone nowhere.
+// client held the tab when Sojourn attached, and every send since has gone nowhere.
 const NOT_ATTACHED = 'Debugger is not attached';
 
 const BADGE_OFF = '#5f6368';
@@ -272,7 +272,7 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
       return reclaim({ ...state, sessions });
     }
     case 'sent': {
-      // A send that lands nowhere says the tab is not attached to Spoofer, whatever the attach
+      // A send that lands nowhere says the tab is not attached to Sojourn, whatever the attach
       // answered, so record the refusal on the tab and let a later tick attach it again.
       if (event.error?.includes(NOT_ATTACHED)) return unattach(state, event.target.tabId, event.error);
       // A Sealed tab answers every call the same way and says nothing about the session, which is
@@ -312,7 +312,7 @@ export function reconcile(state: CoverageState): Command[] {
   if (zone === undefined || !state.enabled || state.paused) {
     // Nothing is due, so give every session up: that is what hands the real values back. A Sealed
     // tab refuses the detach, so it is asked again on the next tick and keeps the Override until it
-    // leaves the page Chrome will not let Spoofer touch.
+    // leaves the page Chrome will not let Sojourn touch.
     for (const [tabId, tab] of state.tabs) {
       if (isAttached(tab) && !sealed(tab, state.now)) commands.push({ type: 'detach', tabId });
     }
@@ -339,7 +339,7 @@ export function reconcile(state: CoverageState): Command[] {
     }
   }
 
-  // Both of these write down what Spoofer believes, so neither runs off a read that just failed:
+  // Both of these write down what Sojourn believes, so neither runs off a read that just failed:
   // an empty badge would hide a real count, and a false Paused would forget the dismissed bar.
   // They also wait for a round with nothing else in it, so a new tab's Override is never queued
   // behind a chrome.action or a storage call. settle loops until nothing is due, so they land.
@@ -385,7 +385,7 @@ export function status(state: CoverageState): CoverageStatus {
   };
 }
 
-// Chrome commits Spoofer's New Tab Page and starts refusing every call about the tab 10 to 22 ms
+// Chrome commits Sojourn's New Tab Page and starts refusing every call about the tab 10 to 22 ms
 // after it is created, and the service worker hears about the tab 6 to 12 ms of that, so a new tab
 // cannot wait for whatever the worker is already running: measured, a tab that waited 0 to 2 ms was
 // Covered and one that waited 5 ms or more never was.
@@ -534,7 +534,7 @@ function tabStatus(state: CoverageState, tabId: number): 'covered' | 'not covere
   const refused = tab.attach?.error;
   if (refused !== undefined && isRestricted(refused)) return 'restricted';
   // A tab that is still loading is due the Override and has not observed it yet, whatever failed
-  // so far, so it is Pending and never counts against Spoofer.
+  // so far, so it is Pending and never counts against Sojourn.
   if (tab.loading) return 'pending';
   if (refused !== undefined) return 'not covered';
   if (!isAttached(tab)) return 'pending';
@@ -574,7 +574,7 @@ const isAttached = (tab: Tab | undefined): boolean => tab?.attach !== undefined 
 const isRestricted = (error: string): boolean => RESTRICTED.some((restricted) => error.includes(restricted));
 
 // A tab Chrome refused this tick: it has already said no, so nothing more is asked of it until the
-// next one. Spoofer's own New Tab Page is the tab that stays this way for as long as it is shown.
+// next one. Sojourn's own New Tab Page is the tab that stays this way for as long as it is shown.
 const sealed = (tab: Tab | undefined, now: number): boolean => tab?.refused !== undefined && tab.refused.at >= now;
 
 // Once a second whatever the tick rate: a re-send is what retakes a renderer whose override was

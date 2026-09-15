@@ -192,7 +192,7 @@ PORT="${PORT:-8787}"
 CHECK_URL="http://127.0.0.1:${PORT}/manual-check.html"
 SERVER_PID=""
 
-# Every url below is typed into the Chrome that has Spoofer loaded rather than
+# Every url below is typed into the Chrome that has Sojourn loaded rather than
 # handed to open_url, because the operating system's opener cannot promise
 # which browser it reaches, and which tab a page lands in is what half of these
 # stages are about.
@@ -210,7 +210,7 @@ verdict() {
 }
 
 # The check page has to come from a real origin, because an extension cannot
-# attach to a file:// page without file access and Spoofer never asks for it. It
+# attach to a file:// page without file access and Sojourn never asks for it. It
 # binds the loopback address only, so nothing else on the network can reach it.
 serve_check_page() {
   node -e '
@@ -237,10 +237,10 @@ http
   trap 'if [[ -n "$SERVER_PID" ]]; then kill "$SERVER_PID" 2>/dev/null || true; fi' EXIT
 }
 
-banner "Spoofer manual checks"
+banner "Sojourn manual checks"
 
 # ── 1 ─────────────────────────────────────────────────────────────────────
-stage "Build Spoofer and load it unpacked"
+stage "Build Sojourn and load it unpacked"
 say "The extension runs out of extension/, so build src/ into it first."
 ( cd "$ROOT" && npm run build )
 say "Serving the check page every later stage uses."
@@ -252,25 +252,25 @@ say ""
 step "In Chrome, open chrome://extensions"
 step "Turn Developer mode on, top right."
 step "Click 'Load unpacked' and choose this folder: $ROOT/extension"
-step "Chrome says the extension changed the page shown on new tabs. Keep Spoofer's page."
-step "Click the puzzle-piece icon in the toolbar and pin Spoofer, so its badge is visible."
-verdict "Is Spoofer loaded, pinned, and Chrome's new tab page left as Spoofer's?" "loaded unpacked"
+step "Chrome says the extension changed the page shown on new tabs. Keep Sojourn's page."
+step "Click the puzzle-piece icon in the toolbar and pin Sojourn, so its badge is visible."
+verdict "Is Sojourn loaded, pinned, and Chrome's new tab page left as Sojourn's?" "loaded unpacked"
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
 stage "Pick Tokyo, and watch the debugging bar appear"
 say "A fresh install covers nothing and shows no bar until a City is picked."
-step "Click the Spoofer icon to open the popup."
+step "Click the Sojourn icon to open the popup."
 step "Type 'tok' in the search box and choose Tokyo."
-step "Watch the top of the window: Chrome shows '\"Spoofer\" started debugging this browser'."
-note "The bar is one per extension and sits on every tab of every window while Spoofer is attached."
+step "Watch the top of the window: Chrome shows '\"Sojourn\" started debugging this browser'."
+note "The bar is one per extension and sits on every tab of every window while Sojourn is attached."
 step "Close the popup and read the badge: it should be empty, not OFF and not a red number."
 verdict "Is Tokyo selected, the bar showing, and the badge empty?" "Selection and the debugging bar"
 
 # ── 3 ─────────────────────────────────────────────────────────────────────
 stage "The New Tab Page path: a site typed into a fresh tab"
-say "This is how most people open a site, and it is the path Spoofer's own New Tab"
+say "This is how most people open a site, and it is the path Sojourn's own New Tab"
 say "Page exists to cover: the tab is attached before it goes anywhere."
-step "Open a new tab (Cmd-T or Ctrl-T). It should be blank: that is Spoofer's page."
+step "Open a new tab (Cmd-T or Ctrl-T). It should be blank: that is Sojourn's page."
 step "Type this url into the omnibox of that same tab and press Enter:"
 note "    $CHECK_URL"
 step "Read the page: 'Zone the first script saw' should be Asia/Tokyo, offset -540."
@@ -280,28 +280,28 @@ verdict "Did the first script see Asia/Tokyo at offset -540?" "New Tab Page firs
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "A third-party check page: zone, coordinates, and the permission prompt"
-say "Somebody else's page, so this is not Spoofer marking its own homework."
+say "Somebody else's page, so this is not Sojourn marking its own homework."
 if confirm "Open a geolocation and time zone check page for you?"; then
   open_url "https://browserleaks.com/geo"
-  warn "make sure it opened in the Chrome you loaded Spoofer into, not another browser"
+  warn "make sure it opened in the Chrome you loaded Sojourn into, not another browser"
 fi
 say "Any page that reports both works; browserleaks.com/geo is one."
 step "Read the time zone it reports: Asia/Tokyo, UTC+9."
 step "Let the page ask for your location. Chrome must raise its own permission prompt,"
-step "the same grey bar under the omnibox you would get without Spoofer."
+step "the same grey bar under the omnibox you would get without Sojourn."
 step "Allow it, and check the coordinates land in Tokyo: about 35.7 N, 139.7 E."
 note "The point carries a per-install jitter of up to 2 km, so it is near the city, not on it."
-step "Open the Spoofer popup and check this tab is counted as covered."
+step "Open the Sojourn popup and check this tab is counted as covered."
 verdict "Zone Tokyo, coordinates in Tokyo, and Chrome's own prompt?" "third-party zone and position"
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
-stage "A New Tab Page tab that was open before Spoofer covered it"
+stage "A New Tab Page tab that was open before Sojourn covered it"
 say "Chrome seals a tab against every extension call while it shows an extension's"
 say "New Tab Page, so a tab already sitting there cannot be attached at all. This is"
 say "the gap the README names, and it is what a browser start looks like."
-step "Open the Spoofer popup and switch Spoofer off."
+step "Open the Sojourn popup and switch Sojourn off."
 step "Open a new tab and leave it on the blank page."
-step "Open the popup from that tab and switch Spoofer back on."
+step "Open the popup from that tab and switch Sojourn back on."
 step "The popup should say one tab is restricted, and the badge should stay empty."
 step "Now type $CHECK_URL into that tab."
 step "'Zone the first script saw' should be your own zone, not Asia/Tokyo."
@@ -311,17 +311,17 @@ verdict "Restricted while blank, real zone in the first script, Tokyo after?" "s
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "The switch: off and on, with no reload"
 step "Keep the check page tab open and watch its clock."
-step "Open the popup and switch Spoofer off."
+step "Open the popup and switch Sojourn off."
 step "The badge reads OFF, and the clock jumps back to your own local time"
 step "within a second, without reloading the page."
-step "Switch Spoofer back on: the clock returns to Tokyo, still without a reload."
+step "Switch Sojourn back on: the clock returns to Tokyo, still without a reload."
 verdict "Did an open tab follow the switch both ways with no reload?" "switch off and on"
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
 stage "The bar's Cancel, and Resume"
-say "Dismissing Chrome's debugging bar detaches every tab at once. Spoofer treats"
+say "Dismissing Chrome's debugging bar detaches every tab at once. Sojourn treats"
 say "that as the user's decision and never re-attaches on its own."
-step "Press Cancel on the '\"Spoofer\" started debugging this browser' bar."
+step "Press Cancel on the '\"Sojourn\" started debugging this browser' bar."
 step "The badge reads OFF, and the check page's clock returns to your own zone."
 step "Open the popup: it should show a Paused notice with a Resume button."
 step "Press Resume: the bar comes back, the badge empties, and the clock returns to Tokyo."
@@ -330,17 +330,17 @@ verdict "OFF and Paused after Cancel, covered again after Resume?" "bar Cancel a
 # ── 8 ─────────────────────────────────────────────────────────────────────
 stage "DevTools, and the DevTools Sensors panel"
 say "Opening DevTools must not cost coverage. A time zone set in the Sensors panel"
-say "collides with Spoofer's, and whichever side loses, nothing may quietly fall back."
+say "collides with Sojourn's, and whichever side loses, nothing may quietly fall back."
 step "Open DevTools on the check page tab (F12 or Cmd-Option-I)."
 step "Reload the page and read it: still Asia/Tokyo, and the popup still counts it covered."
 step "Now open a new tab, go to $CHECK_URL, and open DevTools on it."
 step "In DevTools: the three-dot menu, More tools, Sensors."
 step "Under Location, choose a preset in another zone (Tokyo is the one to avoid), or"
 step "Manage, then a custom location with a different timezone ID."
-step "Read the page's zone and the Spoofer popup together."
-note "Either DevTools is refused and the page stays on Tokyo, or DevTools wins and Spoofer"
+step "Read the page's zone and the Sojourn popup together."
+note "Either DevTools is refused and the page stays on Tokyo, or DevTools wins and Sojourn"
 note "must count that tab as not covered, in red on the badge. What must never happen is a"
-note "page on another zone while Spoofer still calls the tab covered."
+note "page on another zone while Sojourn still calls the tab covered."
 # Read straight, not through ask: a check outcome is an observation, not a stored value.
 printf '  %sWhich happened, in a few words:%s ' "$BOLD" "$RESET"
 read -r SENSORS_OUTCOME || true
@@ -348,7 +348,7 @@ note "recorded for the commit message: $SENSORS_OUTCOME"
 step "Close that Sensors tab and its DevTools window: it is the one tab this run leaves"
 step "not covered on purpose, and every later stage reads the badge."
 step "The badge should be empty again before you answer."
-verdict "Did Spoofer and the page agree, whichever side won?" "DevTools and the Sensors panel"
+verdict "Did Sojourn and the page agree, whichever side won?" "DevTools and the Sensors panel"
 
 # ── 9 ─────────────────────────────────────────────────────────────────────
 stage "A service worker restart"
@@ -356,7 +356,7 @@ say "An attached session keeps the service worker alive with no timeout, so idli
 say "never exercises this path: the worker has to be stopped by hand."
 step "Leave the check page tab open and covered."
 step "In another tab, open chrome://serviceworker-internals"
-step "Find the registration whose Scope is chrome-extension://<Spoofer's id>/"
+step "Find the registration whose Scope is chrome-extension://<Sojourn's id>/"
 step "Press its Stop button."
 note "chrome://extensions also has a 'service worker' link that opens its DevTools,"
 note "where Application, Service Workers, Stop does the same thing."
@@ -367,23 +367,23 @@ verdict "Did open tabs stay covered and a new tab get covered after the restart?
 
 # ── 10 ────────────────────────────────────────────────────────────────────
 stage "Incognito"
-step "Open chrome://extensions and click Details on Spoofer."
+step "Open chrome://extensions and click Details on Sojourn."
 step "Turn 'Allow in Incognito' on."
 step "Open an incognito window (Cmd-Shift-N or Ctrl-Shift-N)."
 say "Chrome lets no extension replace the new tab page in an incognito window, so a"
-say "fresh incognito tab is Chrome's own page and Spoofer cannot attach to it at all."
+say "fresh incognito tab is Chrome's own page and Sojourn cannot attach to it at all."
 say "The first site opened from one reads your real zone once. That is documented, not"
 say "a failure: docs/research/keeping-the-new-tab-page.md, and the README names it."
 step "Open a fresh tab in that incognito window and type $CHECK_URL into it."
 step "'Zone the first script saw' should be your own zone, not Asia/Tokyo: that is the gap."
-step "'Zone now' should be Asia/Tokyo: Spoofer reaches the tab about a second after it lands."
+step "'Zone now' should be Asia/Tokyo: Sojourn reaches the tab about a second after it lands."
 step "Reload the page. 'Zone the first script saw' should read Asia/Tokyo, offset -540, this time."
 step "Check the badge reads the same in both windows, and the popup counts the incognito tab."
 verdict "Real zone first, Asia/Tokyo after the reload, and the tab counted covered?" "incognito"
 
 # ── 11 ────────────────────────────────────────────────────────────────────
 stage "A prerendered page, activated by a click"
-say "The harness never prerenders at all, with or without Spoofer, so this one is"
+say "The harness never prerenders at all, with or without Sojourn, so this one is"
 say "yours. A prerendered document is covered through its own auto-attached session."
 step "Open a new tab and go to $CHECK_URL"
 step "Chrome prerenders a second copy of the page in the background."
@@ -408,12 +408,12 @@ verdict "Did the tab come back covered, with Asia/Tokyo in its first script?" "t
 
 # ── 13 ───────────────────────────────────────────────────────────────────
 stage "A browser restart"
-say "The city you picked has to outlive a restart. The pause you give Spoofer by"
+say "The city you picked has to outlive a restart. The pause you give Sojourn by"
 say "dismissing the bar must not: it lives in session storage, which a restart clears."
-step "Press Cancel on the debugging bar, so Spoofer is paused. The badge reads OFF."
+step "Press Cancel on the debugging bar, so Sojourn is paused. The badge reads OFF."
 step "Quit Chrome completely (Cmd-Q or closing every window)."
 step "Start Chrome again and open a new tab, then go to $CHECK_URL"
-step "'Zone the first script saw' should be Asia/Tokyo: Spoofer is covering again, so"
+step "'Zone the first script saw' should be Asia/Tokyo: Sojourn is covering again, so"
 step "the pause was forgotten."
 step "Open the popup: Tokyo should still be the Selection, with no Paused notice."
 verdict "City kept across the restart, pause forgotten?" "browser restart"

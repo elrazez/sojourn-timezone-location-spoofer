@@ -27,7 +27,7 @@ then `02`, and so on. `00-brief.md` is not a phase; it is the spec every phase i
 | 04 | `04-geolocation.md` | Geolocation override with Jitter and Accuracy |
 | 05 | `05-popup.md` | The popup: city search, switch, status |
 | 06 | `06-audit.md` | The differential Audit and every Trace it finds, fixed |
-| 06.1 | `06.1-new-tab-page.md` | Spoofer's own New Tab Page, closing the measured first-script gap |
+| 06.1 | `06.1-new-tab-page.md` | Sojourn's own New Tab Page, closing the measured first-script gap |
 | 07 | `07-release.md` | Manual-check wizard, packaged zip, final review, tag |
 
 ## Mechanism

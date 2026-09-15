@@ -1,5 +1,5 @@
 // What navigator.geolocation reports in a covered page, and what the same call reports in a browser
-// with no Spoofer in it. Every call passes the suite's explicit timeout, because a Chromium with no
+// with no Sojourn in it. Every call passes the suite's explicit timeout, because a Chromium with no
 // authorised location provider neither resolves nor errors on its own.
 
 import {
@@ -12,15 +12,15 @@ import {
   readZone,
   test,
   type PositionReading,
-  type Spoofer,
+  type Sojourn,
 } from './fixtures.js';
 import type { Page } from '@playwright/test';
 import { metresApart } from '../oracle.js';
 import type { Coordinates } from '../../src/chrome/debugger.js';
 
 // The City this test selected, as the coordinates the extension stored for it.
-const selected = async (spoofer: Spoofer, cityId: string): Promise<Coordinates> =>
-  (await spoofer.select(cityId)).coordinates;
+const selected = async (sojourn: Sojourn, cityId: string): Promise<Coordinates> =>
+  (await sojourn.select(cityId)).coordinates;
 
 // What a covered page must read back for those coordinates: the three numbers, and null for the
 // four fields the Override never sends.
@@ -40,10 +40,10 @@ const readingOf = (where: Coordinates) => ({
 test('a covered page reports the Selection coordinates, with every other field null', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
-  const where = await selected(spoofer, 'tokyo');
+  const where = await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -57,10 +57,10 @@ type Shape = { position: boolean; coords: boolean; json: string };
 test('the position is a real GeolocationPosition whose JSON carries the same seven keys', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
-  const where = await selected(spoofer, 'tokyo');
+  const where = await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -132,10 +132,10 @@ function watchOnce(page: Page): Promise<Watched> {
 test('watchPosition hands the same point to its first callback, and two tabs agree', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
-  const where = await selected(spoofer, 'tokyo');
+  const where = await selected(sojourn, 'tokyo');
   const here = await coveredPage(context, TOKYO_ZONE);
   await here.goto(origins.localhost);
   await expect.poll(() => readZone(here)).toBe(TOKYO_ZONE);
@@ -165,22 +165,22 @@ async function framed(page: Page, src: string, allow: boolean): Promise<Position
   return getPosition(frame);
 }
 
-test('a cross-origin frame allowed geolocation reads the same point, and one that is not is refused as it is without Spoofer', async ({
+test('a cross-origin frame allowed geolocation reads the same point, and one that is not is refused as it is without Sojourn', async ({
   baseline,
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
   await baseline.grantPermissions(['geolocation']);
-  const where = await selected(spoofer, 'tokyo');
+  const where = await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
 
   expect(await framed(page, `${origins.loopback}index.html?allowed`, true)).toEqual(readingOf(where));
 
-  // The same frame without the attribute, against the same frame in a browser with no Spoofer.
+  // The same frame without the attribute, against the same frame in a browser with no Sojourn.
   const plain = await baseline.newPage();
   await plain.goto(origins.localhost);
   const blocked = await framed(page, `${origins.loopback}index.html?blocked`, false);
@@ -188,14 +188,14 @@ test('a cross-origin frame allowed geolocation reads the same point, and one tha
   expect(blocked).toEqual(await framed(plain, `${origins.loopback}index.html?blocked`, false));
 });
 
-test('with no permission the call is denied, exactly as it is without Spoofer', async ({
+test('with no permission the call is denied, exactly as it is without Sojourn', async ({
   baseline,
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   // Nothing is granted here: headless Chromium denies rather than showing a prompt.
-  await selected(spoofer, 'tokyo');
+  await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -216,9 +216,9 @@ test('the geolocation permission state a page reads is the browser own, before a
   baseline,
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
-  await selected(spoofer, 'tokyo');
+  await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -238,16 +238,16 @@ test('the geolocation permission state a page reads is the browser own, before a
 test('changing the City changes the point the next call in an open tab returns', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
-  const tokyo = await selected(spoofer, 'tokyo');
+  const tokyo = await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
   expect(await getPosition(page)).toMatchObject({ latitude: tokyo.latitude, longitude: tokyo.longitude });
 
-  const angeles = await selected(spoofer, 'los-angeles');
+  const angeles = await selected(sojourn, 'los-angeles');
 
   await expect
     .poll(async () => {
@@ -267,10 +267,10 @@ const TOKYO = { latitude: 35.6762, longitude: 139.6503 };
 test('the zone and the point a covered page observes are the same City', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
-  await selected(spoofer, 'tokyo');
+  await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
 
@@ -304,10 +304,10 @@ const heardBy = (page: Page): Promise<Heard[]> =>
 test('a watch hears the new City across a re-send, after the one error Chrome flushes first', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
-  const tokyo = await selected(spoofer, 'tokyo');
+  const tokyo = await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -316,7 +316,7 @@ test('a watch hears the new City across a re-send, after the one error Chrome fl
   await expect.poll(async () => (await heardBy(page)).length).toBeGreaterThan(0);
   expect((await heardBy(page))[0]).toEqual({ latitude: tokyo.latitude, code: null });
 
-  const angeles = await selected(spoofer, 'los-angeles');
+  const angeles = await selected(sojourn, 'los-angeles');
 
   await expect
     .poll(async () => (await heardBy(page)).some((entry) => entry.latitude === angeles.latitude))
@@ -346,7 +346,7 @@ const LEFT_OPEN = 35_000;
 test('a covered page left open reports a position no older than 31 s', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   // Measured 35095 ms after 35 s, and it grows with the document: only a re-send moves the
   // timestamp, and a re-send hands every active watch a POSITION_UNAVAILABLE first, which the test
@@ -355,7 +355,7 @@ test('a covered page left open reports a position no older than 31 s', async ({
   test.skip(true, 'the 30 s refresh is gone, so the age grows with the document: 35095 ms at 35 s');
 
   await context.grantPermissions(['geolocation']);
-  await selected(spoofer, 'tokyo');
+  await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -367,32 +367,32 @@ test('a covered page left open reports a position no older than 31 s', async ({
   expect(fix.age).toBeLessThanOrEqual(31_000);
 });
 
-test('Disabling hands the page back what a browser with no Spoofer answers, and Enabling covers it again', async ({
+test('Disabling hands the page back what a browser with no Sojourn answers, and Enabling covers it again', async ({
   baseline,
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   await context.grantPermissions(['geolocation']);
   await baseline.grantPermissions(['geolocation']);
-  const where = await selected(spoofer, 'tokyo');
+  const where = await selected(sojourn, 'tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
   expect(await getPosition(page)).toMatchObject({ ok: true, latitude: where.latitude });
 
-  await spoofer.enable(false);
+  await sojourn.enable(false);
   await expect.poll(() => readZone(page)).toBe(BASELINE_ZONE);
 
   // This is what says whether detaching is enough, and so whether the Disable path needs the fifth
-  // protocol method the brief allows: a page with no Spoofer in the browser at all is the answer.
+  // protocol method the brief allows: a page with no Sojourn in the browser at all is the answer.
   const plain = await baseline.newPage();
   await plain.goto(origins.localhost);
-  const withoutSpoofer = await getPosition(plain);
-  console.log('geolocation with no extension loaded', JSON.stringify(withoutSpoofer));
-  expect(await getPosition(page)).toEqual(withoutSpoofer);
+  const withoutSojourn = await getPosition(plain);
+  console.log('geolocation with no extension loaded', JSON.stringify(withoutSojourn));
+  expect(await getPosition(page)).toEqual(withoutSojourn);
 
-  await spoofer.enable(true);
+  await sojourn.enable(true);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
   await expect.poll(async () => (await getPosition(page)).ok).toBe(true);
   expect(await getPosition(page)).toMatchObject({ ok: true, latitude: where.latitude });

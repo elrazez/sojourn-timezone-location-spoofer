@@ -13,14 +13,14 @@ const EVERY = 10;
 test('a covered page and a covered worker see one zone and no timezonechange across five reconciles', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
 
-  const before = (await spoofer.status()).zoneSends;
+  const before = (await sojourn.status()).zoneSends;
   const [inPage, inWorker] = await page.evaluate(
     async ([span, every]) => {
       const sample = () => ({
@@ -69,7 +69,7 @@ test('a covered page and a covered worker see one zone and no timezonechange acr
     [SAMPLE_FOR, EVERY] as const,
   );
 
-  const resends = (await spoofer.status()).zoneSends - before;
+  const resends = (await sojourn.status()).zoneSends - before;
 
   // Recorded either way, because whether Chrome fires the event at all is part of the answer.
   console.log('flicker probe', JSON.stringify({ inPage, inWorker, resends }));

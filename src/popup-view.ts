@@ -20,7 +20,7 @@ export type View = {
   enabled: boolean;
   // Off, Paused, No Selection, or the covered count. One line, because one thing is read first.
   state: string;
-  // The Paused notice and its Resume action, which only an Enabled Spoofer can be brought back from.
+  // The Paused notice and its Resume action, which only an Enabled Sojourn can be brought back from.
   paused: boolean;
   restricted: string;
   // The count and why, because a tab that is not Covered has to say so rather than go quiet.
@@ -39,7 +39,7 @@ const MOST_RESULTS = 8;
 const REASONS: readonly (readonly [string, string])[] = [
   ['Timezone override is already in effect', 'another debugging client holds the time zone'],
   ['Debugger is not attached', 'another debugging client holds the tab'],
-  ['Cannot navigate to a file URL', 'Spoofer has no access to local files'],
+  ['Cannot navigate to a file URL', 'Sojourn has no access to local files'],
 ];
 
 // Every other sentence Chrome can answer with, which are sentences for a protocol and not a person.

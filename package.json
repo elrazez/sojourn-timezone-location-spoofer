@@ -1,18 +1,18 @@
 {
-  "name": "spoofer",
-  "version": "0.1.0",
+  "name": "sojourn",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Chrome extension that presents websites with the geolocation and time zone of a City the user picks.",
   "license": "MIT",
-  "repository": "https://github.com/elrazez/Spoofer",
+  "repository": "https://github.com/elrazez/sojourn-timezone-location-spoofer",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test:unit": "vitest run test/unit",
     "test:e2e": "npm run build && playwright test",
     "test": "npm run typecheck && npm run test:unit && npm run test:e2e",
-    "package": "rm -rf extension/dist spoofer-$npm_package_version.zip && npm run build && cd extension && zip -qr ../spoofer-$npm_package_version.zip . -x '*.DS_Store'"
+    "package": "rm -rf extension/dist sojourn-$npm_package_version.zip && npm run build && cd extension && zip -qr ../sojourn-$npm_package_version.zip . -x '*.DS_Store'"
   },
   "engines": {
     "node": ">=22"

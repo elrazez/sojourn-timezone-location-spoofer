@@ -3,7 +3,7 @@
 // events, and every event is folded, reconciled, and run in one serialised queue so two events
 // cannot command the same tab twice. A tab that has just been created is the one thing that does not
 // queue: Coverage covers it on the spot and the queue folds in what came back, because Chrome seals
-// Spoofer's New Tab Page against every call 10 to 22 ms after the tab is created and this listener
+// Sojourn's New Tab Page against every call 10 to 22 ms after the tab is created and this listener
 // hears about the tab 6 to 12 ms into that window. That cycle reads the settings itself when a
 // change has just emptied them, so a tab opened right after a City change is covered rather than
 // left out. It re-derives state on start, which is what makes a worker restart invisible.
@@ -101,7 +101,7 @@ void dispatch({ type: 'settings-changed' });
 // ponytail: the harness's way to drive Settings without opening the popup, which is what keeps the
 // time zone and geolocation suites off the user interface; drop it if those ever drive the popup.
 Object.assign(globalThis, {
-  spoofer: {
+  sojourn: {
     selectCity: (cityId: string) => selectCity(chromeStorage, cityId),
     clearSelection: () => clearSelection(chromeStorage),
     setEnabled: (enabled: boolean) => setEnabled(chromeStorage, enabled),

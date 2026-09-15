@@ -60,7 +60,7 @@ export async function savePaused(session: StorageAdapter, paused: boolean): Prom
   await session.set(PAUSED_KEY, paused);
 }
 
-// The Jitter is a point uniform by area over a disc of this radius, so a list of known Spoofer
+// The Jitter is a point uniform by area over a disc of this radius, so a list of known Sojourn
 // coordinates cannot name an install, and every point stays inside the City.
 const JITTER_METRES = 2000;
 

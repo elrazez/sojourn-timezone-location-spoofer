@@ -197,13 +197,13 @@ Blink's geolocation code moved from `modules/` to `core/`, in the commit titled 
 - Apple CLLocation reference (`altitude`, `ellipsoidalAltitude`, `verticalAccuracy`, `horizontalAccuracy`, `speed`, `course`): https://developer.apple.com/documentation/corelocation/cllocation
 - Microsoft Geocoordinate class: https://learn.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geocoordinate
 
-## Consequences for Spoofer
+## Consequences for Sojourn
 
 1. Send only `latitude`, `longitude`, `accuracy`. Omitted fields reach the page as `null`, matching the Linux network provider and typical WinRT Wi-Fi fixes. Never send `0` for them.
 2. Accuracy: the only source anchors are Core Location's requested `kCLLocationAccuracyHundredMeters` and Google's "radii that can be thousands of meters" for IP fallback. Pick a provisional per-Selection Accuracy between those, and fix the range only after the section 2 measurement.
 3. The `timestamp` is frozen at the last CDP call. A standing Override is a Trace (`Date.now() - pos.timestamp` grows). Re-sending refreshes it, but by source fires `POSITION_UNAVAILABLE` at active watchers. Choose a strategy only after the Playwright confirmation.
 4. The Audit must compare `JSON.stringify(position)` against the Baseline (seven keys, null pattern), plus `Date.now() - timestamp` and callback sequences under `watchPosition`. `toJSON` exists since M126.
 5. macOS may report `altitude: 0` rather than `null`. If the Mac measurement confirms it, per-platform null patterns become a Trace to decide on.
-6. Permission is untouched. The prompt appears and `permissions.query` is real. Spoofer must not grant geolocation through CDP, since the Selection does not imply consent.
+6. Permission is untouched. The prompt appears and `permissions.query` is real. Sojourn must not grant geolocation through CDP, since the Selection does not imply consent.
 7. The Override answers without starting a provider, so the first fix is likely faster than real. The Audit should time `getCurrentPosition` against the Baseline; this stays open until measured.
 8. Debugger detach clears the Override and the tab reverts to real values. Coverage must drop the tab from Covered and say so on the badge.

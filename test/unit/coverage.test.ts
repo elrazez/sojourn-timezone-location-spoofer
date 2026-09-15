@@ -83,7 +83,7 @@ test('scenario 11: a new tab is Covered before it goes anywhere, and its navigat
   const it = started({ stored: { selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: true }, tabs: [] });
   expect(await it.settle()).toEqual([{ type: 'rederive' }, { type: 'badge', text: '', color: ALERT }]);
 
-  // Off the queue, because a brand new tab showing Spoofer's New Tab Page has about 15 ms before
+  // Off the queue, because a brand new tab showing Sojourn's New Tab Page has about 15 ms before
   // Chrome refuses every call about it. One attach, one zone, one position.
   expect(await it.cover(7)).toEqual([
     { type: 'tab-created', tabId: 7 },
@@ -175,7 +175,7 @@ test('scenario 2: Cancel pauses every tab, and only Resume brings them back', as
     { type: 'remember-paused', paused: true },
   ]);
 
-  // A second passes and Spoofer still does not attach on its own.
+  // A second passes and Sojourn still does not attach on its own.
   it.apply({ type: 'tick', now: 1000 });
   expect(await it.settle()).toEqual([]);
   expect(it.status().covered).toBe(0);
@@ -380,7 +380,7 @@ test('a file page that cannot be attached counts on the badge once it has finish
   });
 });
 
-test('a tab that is still loading is Pending, never counted against Spoofer', async () => {
+test('a tab that is still loading is Pending, never counted against Sojourn', async () => {
   const it = started({ stored: { selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: true }, tabs: [{ id: 1, loading: true }] });
   it.refuse({ command: 'attach', error: 'Cannot attach to this target.' });
   await it.settle();
@@ -499,7 +499,7 @@ test('a worker that restarts Disabled gives every tab up, and a Sealed one on it
     stored: { selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: false },
     tabs: [{ id: 1, loading: false }, { id: 2, loading: false }],
   });
-  // Tab 1 never had a session and answers so; tab 2 is showing Spoofer's New Tab Page, which Chrome
+  // Tab 1 never had a session and answers so; tab 2 is showing Sojourn's New Tab Page, which Chrome
   // refuses every call about, including the detach that would hand the real zone back.
   it.refuse(
     { command: 'detach', tabId: 1, error: 'Debugger is not attached to the tab with id: 1.' },
@@ -548,7 +548,7 @@ test('a tab created while a City change is still being read is Covered, not Rest
   it.apply({ type: 'settings-changed' });
   await it.cover(9);
 
-  // Chrome commits Spoofer's New Tab Page a few milliseconds later and refuses every call about the
+  // Chrome commits Sojourn's New Tab Page a few milliseconds later and refuses every call about the
   // tab from then on, so a cover that issued nothing has missed the tab's only window.
   it.refuse({ command: 'attach', tabId: 9, error: 'Cannot access a chrome:// URL' });
   it.apply({ type: 'tab-status', tabId: 9, loading: false });

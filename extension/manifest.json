@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Spoofer",
-  "version": "0.1.0",
+  "name": "Sojourn",
+  "version": "0.1.1",
   "description": "Websites see the geolocation and time zone of a city you pick, and nothing else changes.",
   "minimum_chrome_version": "125",
   "permissions": ["debugger", "storage"],
@@ -11,7 +11,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Spoofer",
+    "default_title": "Sojourn",
     "default_popup": "popup.html"
   }
 }

@@ -158,7 +158,7 @@ Scope: what `Emulation.setTimezoneOverride`, `Emulation.setGeolocationOverride`,
 - PDL `Target.pdl:235-236`: "You might want to call this recursively for auto-attached targets to attach to all available targets." Each OOPIF has its own `FrameAutoAttacher` (above) and each worker its own `RendererAutoAttacherBase`, so every child session needs its own `setAutoAttach`.
   - Puppeteer: `TargetManager.ts:432-444` sends `setAutoAttach` then `runIfWaitingForDebugger` on each child.
   - Playwright: `crPage.ts:793-796` does the same for workers, and `FrameSession._initialize` does it for iframes (`:545`).
-- `filter` (`Target.pdl:248-249`, experimental): "Only targets matching filter will be attached." Default `TargetFilter::CreateDefault` (`target_handler.cc:720-734`) excludes `browser` and `tab` and allows everything else, so omitting it is correct for Spoofer.
+- `filter` (`Target.pdl:248-249`, experimental): "Only targets matching filter will be attached." Default `TargetFilter::CreateDefault` (`target_handler.cc:720-734`) excludes `browser` and `tab` and allows everything else, so omitting it is correct for Sojourn.
 
 ## Detection vectors
 
@@ -168,10 +168,10 @@ Scope: what `Emulation.setTimezoneOverride`, `Emulation.setGeolocationOverride`,
   - `OPEN:` confirm that prototype-getter variant in stable. Experiment: `const e = new Error(); delete e.stack; Object.defineProperty(Object.getPrototypeOf(e), 'stack', {get(){ hit = true; return '' }}); console.log(e);`, with and without `Runtime.enable`.
 - `Debugger.enable`: forbidden. `v8:inspector/v8-debugger-agent-impl.cc:475-479` activates breakpoints (`m_breakpointsActive = m_state->booleanProperty(DebuggerAgentState::breakpointsActiveWhenEnabled, true); if (m_breakpointsActive) m_debugger->setBreakpointsActive(true);`). A `debugger;` statement then pauses (`kDebuggerStatementBreakLocation`, `:300`) until the client resumes, which the page can time with `performance.now()` around the statement.
 - `Emulation.setAutomationOverride`: forbidden. `third_party/blink/renderer/core/frame/navigator.cc:100-106` `Navigator::webdriver()` returns the probe result, and the agent sets it with `enabled |= automation_override_.Get();` (`inspector_emulation_agent.cc:1271-1272`), so `navigator.webdriver` becomes `true`.
-- `Page.enable`: `inspector_page_agent.cc:551-557` only sets state and `instrumenting_agents_->AddInspectorPageAgent(this)`. No page-visible effect found in `enable` itself. `OPEN:` run the Audit with it on. Spoofer does not need it, so forbid it anyway.
+- `Page.enable`: `inspector_page_agent.cc:551-557` only sets state and `instrumenting_agents_->AddInspectorPageAgent(this)`. No page-visible effect found in `enable` itself. `OPEN:` run the Audit with it on. Sojourn does not need it, so forbid it anyway.
 - `Log.enable`: `inspector_log_agent.cc:177-178, 195-199` adds the log agent to instrumentation. Violation reports need `Log.startViolationsReport`. No page-visible effect found. `OPEN:` Audit. Not needed, so forbid.
 - `Network.enable`: not traced in this pass. `OPEN:` Audit. Not needed, so forbid.
-- The four commands Spoofer needs:
+- The four commands Sojourn needs:
   - `setTimezoneOverride`: invisible only if applied before the first script in the process. Late application changes `Date` offsets mid-life and may fire `timezonechange` (above).
   - `setGeolocationOverride`: frozen `timestamp`, and an immediate callback to active watchers when applied (above).
   - `setAutoAttach` with `waitForDebuggerOnStart`: delays OOPIF commits and worker start by one CDP round trip. `OPEN:` whether that is measurable against the Baseline. Experiment: compare the OOPIF's `performance.getEntriesByType('navigation')[0]` (`responseEnd`, `domInteractive`) and a worker's `performance.now()` at its first line, with and without the extension, over many runs.
@@ -197,7 +197,7 @@ Scope: what `Emulation.setTimezoneOverride`, `Emulation.setGeolocationOverride`,
 - Puppeteer (https://raw.githubusercontent.com/puppeteer/puppeteer/main/): `packages/puppeteer-core/src/cdp/EmulationManager.ts`, `TargetManager.ts`, `Page.ts`
 - Playwright (https://raw.githubusercontent.com/microsoft/playwright/main/): `packages/playwright-core/src/server/chromium/crPage.ts`, `crBrowser.ts`, `crServiceWorker.ts`
 
-## Consequences for Spoofer
+## Consequences for Sojourn
 
 - Time zone is per renderer process. Send `Emulation.setTimezoneOverride` on the tab session and on every auto-attached `iframe`, `worker` and `service_worker` session, before `Runtime.runIfWaitingForDebugger`. "Already in effect" with the same Selection cannot happen, since the same id returns success.
 - Geolocation is per `WebContents`. Send `Emulation.setGeolocationOverride` with `latitude`, `longitude` and `accuracy` (all three, or the page gets `POSITION_UNAVAILABLE`) on the tab session only, never on child sessions.

@@ -144,7 +144,7 @@ Scope: what a MAIN-world content script at `document_start` can and cannot guara
 44. **Non-native recent globals**. L58-77. The last 50 window keys must stringify as native. `return key === 'chrome' ? names.includes(key) : !isEngine(d.get || d.value)`
 45. **Geolocation permission state and `Permissions.query` lies**. `src/navigator/index.ts` L336-352; `src/lies/index.ts` L726-730. `getPermissionState('geolocation'),`
 
-Not present anywhere under CreepJS `src/` (all 39 files grepped): `chrome-extension://` stack inspection (the only hit is an icon class, `src/resistance/index.ts` L527), `Temporal`, reads of geolocation coordinates, and time zone vs `navigator.language` or vs geolocation. Spoofer-owned probes for those vectors:
+Not present anywhere under CreepJS `src/` (all 39 files grepped): `chrome-extension://` stack inspection (the only hit is an icon class, `src/resistance/index.ts` L527), `Temporal`, reads of geolocation coordinates, and time zone vs `navigator.language` or vs geolocation. Sojourn-owned probes for those vectors:
 
 46. **Extension URL in `Error.stack`**. Registered files compile with their resource URL as script URL (`extensions/renderer/user_script_injector.cc` L274, L284-286: `const GURL& script_url = file->url();` then `sources.emplace_back(..., script_url, ...)`). Inline `userScripts` code gets a random resource URL (`content_script_utils.cc` L355-358: `GURL url = extension->GetResourceURL(base::Uuid::GenerateRandomV4().AsLowercaseString());`). Any frame inside the patch names `chrome-extension://<id>/...`.
 47. **`Temporal.Now` zone and `Date.prototype.toTemporalInstant`**. See section 6. `Temporal.Now.timeZoneId()` and the `*ISO()` methods must report the Override.
@@ -214,7 +214,7 @@ Not present anywhere under CreepJS `src/` (all 39 files grepped): `chrome-extens
 - CreepJS (`https://raw.githubusercontent.com/abrahamjuliot/creepjs/master/<path>`, tree via `https://api.github.com/repos/abrahamjuliot/creepjs/git/trees/master?recursive=1`): `src/lies/index.ts`, `src/timezone/index.ts`, `src/intl/index.ts`, `src/worker/index.ts`, `src/creep.ts`, `src/speech/index.ts`, `src/headless/index.ts`, `src/resistance/index.ts`, `src/status/index.ts`, `src/navigator/index.ts`, `src/utils/helpers.ts`
 - Secondary pointer only: https://issues.chromium.org/issues/40480216
 
-## Consequences for Spoofer
+## Consequences for Sojourn
 
 1. A cannot cover service, shared, module, cross-origin or unreadable `blob:` workers. CreepJS reads the service worker first (probe 36), so a real time zone stays visible on the most-used probe path.
 2. Configuration: MAIN world has no extension APIs and `chrome.storage` is async, so the Selection has to be in the script text. That leaves one packaged file per Catalog City (Jitter fixed at build time, which conflicts with a Jitter generated per selection) or `userScripts.register` inline `code` (needs the "Allow User Scripts" toggle, Chrome 138+).
@@ -222,4 +222,4 @@ Not present anywhere under CreepJS `src/` (all 39 files grepped): `chrome-extens
 4. Open tabs and tabs loaded before a Selection change keep their old values until reload. The badge must count them as not Covered, and reloading is the only fix.
 5. Drop the README's `contentWindow`/`contentDocument` getter patch unless the commit-to-`<html>` race is proven. Chromium already injects synchronously into a new frame's initial document, and the getter itself is probed (27, 41, 42).
 6. Every replaced function (`Date`, `Intl`, `Temporal.Now`, `Geolocation*`) must pass probes 1-28 in every realm, with `toString` agreeing across realms, and must hold LMT-era offsets (31).
-7. Phase 06 probe count: 50 (45 from CreepJS, 5 Spoofer-owned).
+7. Phase 06 probe count: 50 (45 from CreepJS, 5 Sojourn-owned).

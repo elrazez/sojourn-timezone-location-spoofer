@@ -25,7 +25,7 @@ function fakeStorage(): StorageAdapter {
   };
 }
 
-test('with nothing stored there is no Selection and Spoofer is Enabled', async () => {
+test('with nothing stored there is no Selection and Sojourn is Enabled', async () => {
   expect(await loadSettings(fakeStorage())).toEqual({ selection: null, enabled: true });
 });
 

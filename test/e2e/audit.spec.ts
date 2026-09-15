@@ -136,10 +136,10 @@ test('the Audit diff is exactly the Override keys, every context agrees, and Dis
   context,
   disabled,
   origins,
-  spoofer,
+  sojourn,
 }) => {
   test.setTimeout(240_000);
-  const selection = await spoofer.select('tokyo');
+  const selection = await sojourn.select('tokyo');
 
   const before = await baselineReport(baseline, origins);
   const after = await coveredReport(context, origins);
@@ -213,8 +213,8 @@ test('the Audit diff is exactly the Override keys, every context agrees, and Dis
 // The third run: the extension is loaded, a City is selected, and the switch is off, which is the
 // state that has to be indistinguishable from a browser with no extension in it.
 async function disabledReport(disabled: Loaded, origins: Origins): Promise<Report> {
-  await disabled.spoofer.enable(false);
-  await disabled.spoofer.select('tokyo');
+  await disabled.sojourn.enable(false);
+  await disabled.sojourn.select('tokyo');
   await disabled.context.grantPermissions(['geolocation']);
   const page = await disabled.context.newPage();
   await page.goto(origins.localhost);
@@ -276,7 +276,7 @@ async function popupFirsts(
   return { loads: readings.length, misses: readings.filter(missed).length, readings };
 }
 
-// The two timings a child target pays for being paused at start until Spoofer resumes it.
+// The two timings a child target pays for being paused at start until Sojourn resumes it.
 function childTimings(page: Page, other: string): Promise<{ iframe: number; worker: number }> {
   return page.evaluate(async (where) => {
     const iframe = await new Promise<number>((done) => {
@@ -335,7 +335,7 @@ async function backForward(context: BrowserContext, origins: Origins): Promise<u
   return heard;
 }
 
-// Whether a tab was Covered while it sat on Spoofer's New Tab Page. A tab that never gets there is
+// Whether a tab was Covered while it sat on Sojourn's New Tab Page. A tab that never gets there is
 // a number here rather than a failed run, which is what a measurement has to be.
 const coveredOnNewTabPage = (page: Page): Promise<boolean> =>
   expect
@@ -358,11 +358,11 @@ async function loadsInto(context: BrowserContext, worker: import('@playwright/te
   return misses;
 }
 
-test('the residual measurements', async ({ baseline, context, origins, spoofer, worker }) => {
+test('the residual measurements', async ({ baseline, context, origins, sojourn, worker }) => {
   test.setTimeout(420_000);
   await context.grantPermissions(['geolocation']);
   await baseline.grantPermissions(['geolocation']);
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const covered = await coveredPage(context, TOKYO_ZONE);
 
   // 4. First-script gaps: the popups, the prerendered page, and the shared worker's first line.
@@ -386,7 +386,7 @@ test('the residual measurements', async ({ baseline, context, origins, spoofer, 
   };
 
   // 5. The New Tab Page, twenty loads, and the first ten of them apart. A tab opened where a person
-  // opens one, which the override makes Spoofer's own page, then sent where they typed. Chrome's own
+  // opens one, which the override makes Sojourn's own page, then sent where they typed. Chrome's own
   // chrome://new-tab-page is not where a new tab lands any more, which is the point of ADR-0003.
   const newTabPageUrl = `${origins.localhost}index.html`;
   const newTabPage: { covered: boolean; missed: boolean }[] = [];
@@ -509,8 +509,8 @@ async function measureBar(origins: Origins): Promise<unknown> {
       });
       return { innerHeight: window.innerHeight, resizes: heard.resizes };
     });
-    // Attaching is what shows the bar, and a Selection is what makes Spoofer attach.
-    await headed.spoofer.select('tokyo');
+    // Attaching is what shows the bar, and a Selection is what makes Sojourn attach.
+    await headed.sojourn.select('tokyo');
     await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
     const read = () =>
       page.evaluate(() => ({

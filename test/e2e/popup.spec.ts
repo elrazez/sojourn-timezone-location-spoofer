@@ -12,13 +12,13 @@ test('slice 4: typing tok and choosing Tokyo makes the Selection Tokyo, and the 
   context,
   origins,
   popup,
-  spoofer,
+  sojourn,
 }) => {
   await popup.getByLabel('Search Cities').fill('tok');
   await popup.getByRole('button', { name: 'Tokyo, Japan' }).click();
 
   // Read back through the service worker, so this is the extension's Selection and not the popup's.
-  await expect.poll(async () => (await spoofer.status()).cityId).toBe('tokyo');
+  await expect.poll(async () => (await sojourn.status()).cityId).toBe('tokyo');
   await expect(popup.getByText('Tokyo, Japan', { exact: true })).toBeVisible();
 
   const page = await context.newPage();
@@ -30,11 +30,11 @@ test('slice 5: the switch off reads Off, shows OFF on the badge, and hands the p
   context,
   origins,
   popup,
-  spoofer,
+  sojourn,
   worker,
 }) => {
   const badge = () => worker.evaluate(() => chrome.action.getBadgeText({}));
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await context.newPage();
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -57,11 +57,11 @@ test('slice 6: the count is the open http tabs, and it grows when another is ope
   context,
   origins,
   popup,
-  spoofer,
+  sojourn,
 }) => {
   // Start from nothing but the popup, so the only web tabs here are the ones this test opens.
   for (const open of context.pages()) if (open !== popup) await open.close();
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
 
   for (const where of [origins.localhost, origins.loopback]) {
     const page = await context.newPage();
@@ -81,11 +81,11 @@ test('the Paused notice offers Resume, and Resume covers the tabs again', async 
   context,
   origins,
   popup,
-  spoofer,
+  sojourn,
   worker,
 }) => {
   for (const open of context.pages()) if (open !== popup) await open.close();
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await context.newPage();
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
@@ -107,12 +107,12 @@ test('the Paused notice offers Resume, and Resume covers the tabs again', async 
 
 test('slice 7: Enter takes the first result, every control has a label, and focus goes search, results, switch', async ({
   popup,
-  spoofer,
+  sojourn,
 }) => {
   await popup.getByLabel('Search Cities').fill('tok');
   await popup.getByLabel('Search Cities').press('Enter');
 
-  await expect.poll(async () => (await spoofer.status()).cityId).toBe('tokyo');
+  await expect.poll(async () => (await sojourn.status()).cityId).toBe('tokyo');
 
   // Only Tokyo answers to its whole name, so the row between the search box and the switch is one.
   await popup.getByLabel('Search Cities').fill('tokyo');

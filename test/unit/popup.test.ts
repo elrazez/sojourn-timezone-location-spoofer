@@ -73,7 +73,7 @@ test('slice 3: a Not Covered tab reads with its reason when Chrome named one, an
     reported({ notCovered: [{ tabId: 1, reason: 'Cannot navigate to a file URL without local file access.' }] }),
     '',
   );
-  expect(local.notCovered).toBe('1 tab Not Covered: Spoofer has no access to local files');
+  expect(local.notCovered).toBe('1 tab Not Covered: Sojourn has no access to local files');
 
   // The same one tab, refused with a sentence Chrome has many of and a person can do nothing with.
   const strange = view(reported({ notCovered: [{ tabId: 1, reason: 'Xyzzy went wrong' }] }), '');

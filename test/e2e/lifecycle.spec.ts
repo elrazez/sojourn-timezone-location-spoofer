@@ -1,5 +1,5 @@
 // What the user is told, and what happens to coverage when tabs are restricted, share a renderer,
-// crash, are discarded, or start life somewhere Spoofer cannot attach.
+// crash, are discarded, or start life somewhere Sojourn cannot attach.
 
 import { fileURLToPath } from 'node:url';
 import type { Worker } from '@playwright/test';
@@ -33,31 +33,31 @@ const badge = (worker: Worker) =>
 test('the badge is empty while every web tab is Covered, OFF while Disabled, and a red count otherwise', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
 
   await expect.poll(async () => (await badge(worker)).text).toBe('');
 
-  await spoofer.enable(false);
+  await sojourn.enable(false);
   await expect.poll(async () => (await badge(worker)).text).toBe('OFF');
 
   // Another debugging client takes this renderer's zone first, which is what the DevTools Sensors
-  // panel does. Spoofer's send is then refused and the tab can never be Covered until it lets go.
+  // panel does. Sojourn's send is then refused and the tab can never be Covered until it lets go.
   const taken = await context.newPage();
   await taken.goto(origins.loopback);
   const rival = await context.newCDPSession(taken);
   await rival.send('Emulation.setTimezoneOverride', { timezoneId: ANOTHER_CLIENTS_ZONE });
 
-  await spoofer.enable(true);
+  await sojourn.enable(true);
 
   await expect.poll(async () => (await badge(worker)).text).toBe('1');
   expect((await badge(worker)).color).toEqual(RED);
-  expect((await spoofer.status()).notCovered).toEqual([
+  expect((await sojourn.status()).notCovered).toEqual([
     { tabId: expect.any(Number), reason: 'Timezone override is already in effect' },
   ]);
   expect(await readZone(taken)).toBe(ANOTHER_CLIENTS_ZONE);
@@ -65,8 +65,8 @@ test('the badge is empty while every web tab is Covered, OFF while Disabled, and
 
 // Measured, not asserted: an extension loaded from the command line has file access here, so a
 // file:// tab is Covered in this harness and cannot stand in for a Not Covered web tab.
-test('a file page is Covered in this harness', async ({ context, spoofer }) => {
-  await spoofer.select('tokyo');
+test('a file page is Covered in this harness', async ({ context, sojourn }) => {
+  await sojourn.select('tokyo');
   const local = await context.newPage();
   await local.goto(`file://${FILE_PAGE}`);
 
@@ -76,18 +76,18 @@ test('a file page is Covered in this harness', async ({ context, spoofer }) => {
 test('a chrome:// tab is Restricted, counted apart from Not Covered, and never on the badge', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
 
   await openTab(context, worker, 'chrome://version');
 
-  await expect.poll(async () => (await spoofer.status()).restricted).toBe(1);
-  expect((await spoofer.status()).notCovered).toEqual([]);
+  await expect.poll(async () => (await sojourn.status()).restricted).toBe(1);
+  expect((await sojourn.status()).notCovered).toEqual([]);
   expect((await badge(worker)).text).toBe('');
 });
 
@@ -97,7 +97,7 @@ test.describe('in one renderer process', () => {
   test('a Covered tab is handed its real zone for under a second when the owner of its renderer leaves', async ({
     context,
     origins,
-    spoofer,
+    sojourn,
   }) => {
     // Start from no tabs, so the only pages here are the two this test opens.
     for (const open of context.pages()) await open.close();
@@ -113,15 +113,15 @@ test.describe('in one renderer process', () => {
       return processInfo.filter((process) => process.type === 'renderer').map((process) => process.id);
     };
 
-    // Another debugging client owns this renderer's zone, having set the same zone Spoofer wants
-    // first. Spoofer's own sends then succeed and change nothing, which is the shared-renderer case.
+    // Another debugging client owns this renderer's zone, having set the same zone Sojourn wants
+    // first. Sojourn's own sends then succeed and change nothing, which is the shared-renderer case.
     const owner = await context.newPage();
     await owner.goto(`${origins.localhost}opener.html?target=${origins.localhost}index.html`);
     const rival = await context.newCDPSession(owner);
     await rival.send('Emulation.setTimezoneOverride', { timezoneId: TOKYO_ZONE });
 
-    await spoofer.select('tokyo');
-    await expect.poll(async () => (await spoofer.status()).covered).toBe(1);
+    await sojourn.select('tokyo');
+    await expect.poll(async () => (await sojourn.status()).covered).toBe(1);
     const before = await renderers();
 
     const [shared] = await Promise.all([context.waitForEvent('page'), owner.click('#open')]);
@@ -129,7 +129,7 @@ test.describe('in one renderer process', () => {
     await expect.poll(() => readZone(shared)).toBe(TOKYO_ZONE);
     expect(await renderers()).toEqual(before);
 
-    // The rival leaves with no event to tell Spoofer, so the process falls back to the real zone
+    // The rival leaves with no event to tell Sojourn, so the process falls back to the real zone
     // until the next reconcile takes it. Sampling runs across the detach to catch that window.
     const sampling = shared.evaluate(
       (span) =>
@@ -161,10 +161,10 @@ test.describe('in one renderer process', () => {
 test('a tab whose renderer crashed observes Asia/Tokyo in the first script after it loads again', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const { page, tabId } = await openCoveredTab(context, worker, `${origins.localhost}record.html`, TOKYO_ZONE);
   await expect.poll(() => origins.readings.at(-1)?.zone).toBe(TOKYO_ZONE);
 
@@ -185,7 +185,7 @@ test('a tab whose renderer crashed observes Asia/Tokyo in the first script after
 test('a discarded tab observes Asia/Tokyo when it is brought back', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
   // Measured: chrome.tabs.discard succeeds and reports the new tab id, and the harness then loses
@@ -193,7 +193,7 @@ test('a discarded tab observes Asia/Tokyo when it is brought back', async ({
   // page, context or browser has been closed". On the brief's Manual verification line instead.
   test.skip(true, 'chrome.tabs.discard closes the harness connection to the browser');
 
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const { tabId } = await openCoveredTab(context, worker, `${origins.localhost}record.html`, TOKYO_ZONE);
   await expect.poll(() => origins.readings.at(-1)?.zone).toBe(TOKYO_ZONE);
 
@@ -208,18 +208,18 @@ test('a discarded tab observes Asia/Tokyo when it is brought back', async ({
 // that happened to be won.
 const LOADS = 10;
 
-test('a new tab shows Spoofer blank New Tab Page and is Covered within one reconcile tick', async ({
+test('a new tab shows Sojourn blank New Tab Page and is Covered within one reconcile tick', async ({
   context,
   extensionId,
-  spoofer,
+  sojourn,
   worker,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
 
   const { page } = await openTab(context, worker);
 
   expect(page.url()).toBe(`chrome-extension://${extensionId}/newtab.html`);
-  expect(await page.title()).toBe('Spoofer');
+  expect(await page.title()).toBe('Sojourn');
   expect(
     await page.evaluate(() => ({
       body: document.body.innerHTML.trim(),
@@ -235,18 +235,18 @@ test('a new tab shows Spoofer blank New Tab Page and is Covered within one recon
   // The slow reconcile tick is 1000 ms, so a tab that is not Covered inside two seconds was not
   // covered by one tick. This tab and the one the browser opened with are the only two.
   await expect.poll(() => readZone(page), { timeout: 2000 }).toBe(TOKYO_ZONE);
-  await expect.poll(async () => (await spoofer.status()).covered, { timeout: 2000 }).toBe(2);
-  expect(await spoofer.status()).toMatchObject({ pending: 0, restricted: 0, notCovered: [] });
+  await expect.poll(async () => (await sojourn.status()).covered, { timeout: 2000 }).toBe(2);
+  expect(await sojourn.status()).toMatchObject({ pending: 0, restricted: 0, notCovered: [] });
   expect((await badge(worker)).text).toBe('');
 });
 
 test('a tab leaving the New Tab Page observes Asia/Tokyo in its first script, ten times in ten', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
 
   const firsts = [];
   for (let load = 0; load < LOADS; load += 1) {
@@ -261,10 +261,10 @@ test('a tab leaving the New Tab Page observes Asia/Tokyo in its first script, te
 test('a tab leaving the New Tab Page onto a document the browser already holds observes Asia/Tokyo in its first script', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   // Primed in a tab that is already Covered, so the ten loads below read it out of the cache: this
   // is the case that used to lose, because no request goes out for the attach to beat.
   const cached = `${origins.localhost}index.html?cache=3600`;
@@ -290,11 +290,11 @@ test('a tab leaving the New Tab Page onto a document the browser already holds o
 test('a tab leaving the New Tab Page observes the Selection point from a position call in its first script', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
   await context.grantPermissions(['geolocation']);
-  const selection = await spoofer.select('tokyo');
+  const selection = await sojourn.select('tokyo');
 
   // One load, because the position lives on the tab in the browser process rather than in the
   // document: it is set before the navigation and is not the race the zone is.
@@ -308,21 +308,21 @@ test('a tab leaving the New Tab Page observes the Selection point from a positio
   });
 });
 
-test('a tab already showing the New Tab Page when Spoofer starts covering is Restricted, and what it opens next misses', async ({
+test('a tab already showing the New Tab Page when Sojourn starts covering is Restricted, and what it opens next misses', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
   // Chrome seals a tab against every call while it shows an extension New Tab Page, so a tab
-  // already sitting there when Spoofer starts covering can never be attached. This is the gap the
+  // already sitting there when Sojourn starts covering can never be attached. This is the gap the
   // override leaves, and it is the browser start and the first Selection.
   const { page, tabId } = await openTab(context, worker);
   await page.waitForLoadState();
 
-  await spoofer.select('tokyo');
-  await expect.poll(async () => (await spoofer.status()).restricted).toBe(1);
-  expect((await spoofer.status()).notCovered).toEqual([]);
+  await sojourn.select('tokyo');
+  await expect.poll(async () => (await sojourn.status()).restricted).toBe(1);
+  expect((await sojourn.status()).notCovered).toEqual([]);
 
   const url = `${origins.localhost}index.html`;
   await worker.evaluate((asked) => chrome.tabs.update(asked.id, { url: asked.url }), { id: tabId, url });
@@ -337,21 +337,21 @@ test('a tab already showing the New Tab Page when Spoofer starts covering is Res
 test('Disabling reaches a tab on the New Tab Page only once that tab goes somewhere', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const { page, tabId } = await openTab(context, worker);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
 
-  await spoofer.enable(false);
-  await expect.poll(async () => (await spoofer.status()).enabled).toBe(false);
+  await sojourn.enable(false);
+  await expect.poll(async () => (await sojourn.status()).enabled).toBe(false);
 
   const url = `${origins.localhost}index.html`;
   await worker.evaluate((asked) => chrome.tabs.update(asked.id, { url: asked.url }), { id: tabId, url });
   await page.waitForURL((current) => current.href === url);
 
-  // Chrome refused the detach while the tab was Sealed and replays the session Spoofer was not
+  // Chrome refused the detach while the tab was Sealed and replays the session Sojourn was not
   // allowed to give up, so this one document still observes the Override in its first script.
   expect(await readFirst(page)).toEqual({ zone: TOKYO_ZONE, offset: TOKYO_OFFSET });
   // The tab is reachable again the moment it leaves, so the next tick gives the session up and the
@@ -363,7 +363,7 @@ test('Disabling reaches a tab on the New Tab Page only once that tab goes somewh
 test('a tab created straight onto another site observes Asia/Tokyo in its first script', async ({
   context,
   origins,
-  spoofer,
+  sojourn,
   worker,
 }) => {
   // Measured 10 misses in 10 tabs, and the timeline says why: chrome.tabs.onCreated reaches the
@@ -375,7 +375,7 @@ test('a tab created straight onto another site observes Asia/Tokyo in its first 
   // out when the service worker hears about the tab.
   test.skip(true, 'the zone lands about 10 ms after the first script when the document is local');
 
-  await spoofer.select('tokyo');
+  await sojourn.select('tokyo');
   const page = await coveredPage(context, TOKYO_ZONE);
   await page.goto(origins.localhost);
   await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
