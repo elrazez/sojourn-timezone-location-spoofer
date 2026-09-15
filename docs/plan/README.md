@@ -15,7 +15,7 @@ then `02`, and so on. `00-brief.md` is not a phase; it is the spec every phase i
 - **The fixed point.** Every phase records `git rev-parse HEAD` at its start and reviews its own diff against that SHA with `code-review` before committing.
 - **Completion criteria are gates.** A phase is done when every criterion in its "Done when" list is true, verified by running the command named beside it, not by reading the code.
 - **Skills, by name.** Prompts call skills through the Skill tool: `research`, `grilling`, `domain-modeling`, `codebase-design`, `prototype`, `tdd`, `code-review`, `diagnosing-bugs`, `wizard`, `writing-for-agents`. These are the `mattpocock-skills` plugin skills; install it with `claude plugins install mattpocock-skills` if a call fails.
-- **Commits land on `main`.** Solo project, no branches, except `prototype/<name>` branches that the `prototype` skill leaves behind as primary sources.
+- **Commits land on `main`.** Solo project, no branches, except the throwaway prototypes the `prototype` skill leaves behind as primary sources, kept as `prototype-<name>` tags rather than branches.
 
 ## Phases
 

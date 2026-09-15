@@ -23,7 +23,7 @@ Call the Skill tool with `prototype` and take the logic branch. The question: do
   9. A Covered tab navigates to a page Chrome forbids (`target_closed` with the tab still open; the tab becomes Restricted or Not Covered by the brief's definitions and is attached again when it leaves).
   10. No Selection yet: nothing attaches and no bar appears.
 
-Keep the reducer and reconcile step pure and portable. When the walkthroughs read right, commit the prototype to a `prototype/coverage-state` branch, note its verdict in the commit, and lift the logic into the Coverage module on `main`. The HTML stays on the prototype branch only.
+Keep the reducer and reconcile step pure and portable. When the walkthroughs read right, commit the prototype on its own branch, note its verdict in the commit, tag that commit `prototype-coverage-state`, delete the branch, and lift the logic into the Coverage module on `main`. The HTML lives only at that tag.
 
 ## Step 2: slices
 
@@ -74,6 +74,6 @@ Call the Skill tool with `code-review`. Fixed point: the SHA from the start. Spe
 - [ ] `npm test` is green; the reducer tests cover all ten scenarios and browser tests 1 to 16 exist, with at most the prerender test, the New Tab Page test, the tab discard test, and the tab created straight onto a url on the same machine skipped, each with its reason.
 - [ ] `grep -rn "Runtime\." src/ | grep -v runIfWaitingForDebugger` prints nothing.
 - [ ] `grep -rn "ponytail:" src/` shows the reconcile interval's comment.
-- [ ] `git branch --list 'prototype/*'` shows `prototype/coverage-state`, and `git ls-files | grep -i prototype` prints nothing on `main`.
+- [ ] `git tag --list 'prototype-*'` shows `prototype-coverage-state`, and `git ls-files | grep -i prototype` prints nothing on `main`.
 - [ ] `CONTEXT.md` defines Paused, Restricted, and Not Covered.
 - [ ] Committed on `main` with the message `phase 03: coverage lifecycle and time zone`.
