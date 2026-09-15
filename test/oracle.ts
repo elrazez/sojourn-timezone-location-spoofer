@@ -1,6 +1,8 @@
 // The independent oracle the tests measure distances with: the haversine great-circle distance on a
-// sphere of the mean Earth radius. Nothing in src computes a distance, so a point that reads right
-// here is a point the code really put where it said it did.
+// sphere of the mean Earth radius. src goes the other way, from a distance and a bearing to a point,
+// so a point that reads right here is a point the code really put where it said it did.
+// ponytail: the two share this one constant, so a wrong Earth radius would cancel out and the Jitter
+// bound would still read right; an oracle on a different sphere model would catch that.
 
 export const EARTH_RADIUS = 6371000;
 

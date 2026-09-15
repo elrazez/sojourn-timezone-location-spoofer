@@ -15,6 +15,12 @@ const WELL_KNOWN: ReadonlyArray<[string, number, number]> = [
   ['mumbai', 19.08, 72.88],
 ];
 
+// The README tells a stranger the search covers more than 150 cities, which is the claim this pins.
+// A bound rather than the count, because adding a City must not turn a test red.
+test('the Catalog carries more than 150 Cities', () => {
+  expect(CITIES.length).toBeGreaterThan(150);
+});
+
 test('getCity returns Tokyo with the zone Asia/Tokyo', () => {
   expect(getCity('tokyo')).toMatchObject({ name: 'Tokyo', country: 'Japan', zone: 'Asia/Tokyo' });
 });

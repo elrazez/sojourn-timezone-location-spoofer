@@ -109,7 +109,11 @@ export type CoverageStatus = {
   error?: string;
 };
 
-// Chrome refuses an attach with one of these when no extension may touch the tab at all.
+// Chrome refuses an attach with one of these when no extension may touch the tab at all. Another
+// extension's own page is missing on purpose: Chrome answers it and a web page that merely frames
+// such an extension's iframe with the same sentence, and the brief wants the first Restricted and
+// the second Not Covered. Counting both Not Covered over-reports a tab nobody can fix; counting both
+// Restricted would drop a real web page off the badge, which is the silent fallback the rules forbid.
 const RESTRICTED = [
   'Cannot access a chrome:// URL',
   'The extensions gallery cannot be scripted',
@@ -516,11 +520,7 @@ async function answer(
   }
 }
 
-function sent(
-  target: SessionTarget,
-  what: 'zone' | 'autoAttach' | 'resumed' | 'geolocation',
-  act: () => Promise<void>,
-): Promise<CoverageEvent> {
+function sent(target: SessionTarget, what: SendKind, act: () => Promise<void>): Promise<CoverageEvent> {
   return answer(
     act,
     () => ({ type: 'sent', target, what }),

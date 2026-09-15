@@ -1,0 +1,63 @@
+<!doctype html>
+<script>
+  // The first script in the document: what this page observed before anything else ran. The manual
+  // check reads this line, because a zone that arrives later would hide the gap it is looking for.
+  window.__first = {
+    zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    offset: new Date().getTimezoneOffset(),
+  };
+</script>
+<meta charset="utf-8">
+<title>Spoofer manual check</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem; max-width: 40rem; }
+  dt { font-weight: 600; margin-top: 0.75rem; }
+  dd { margin: 0; font-family: ui-monospace, monospace; }
+  button { font: inherit; margin-top: 1.5rem; padding: 0.5rem 1rem; }
+</style>
+<h1>Spoofer manual check</h1>
+<p>Served from your own machine by <code>scripts/manual-check.sh</code>. Nothing here is sent anywhere.</p>
+<dl>
+  <dt>Zone the first script saw</dt>
+  <dd id="first-zone"></dd>
+  <dt>Offset the first script saw, in minutes</dt>
+  <dd id="first-offset"></dd>
+  <dt>Zone now</dt>
+  <dd id="zone"></dd>
+  <dt>Local time now</dt>
+  <dd id="clock"></dd>
+  <dt>Position</dt>
+  <dd id="position">not asked for yet</dd>
+</dl>
+<button id="ask">Ask for my position</button>
+<p id="prerender-link" hidden><a href="manual-check.html?prerendered">Follow this link to activate the prerendered copy</a></p>
+<script>
+  const show = (id, text) => { document.getElementById(id).textContent = text; };
+  show('first-zone', window.__first.zone);
+  show('first-offset', String(window.__first.offset));
+  show('zone', Intl.DateTimeFormat().resolvedOptions().timeZone);
+  setInterval(() => show('clock', new Date().toString()), 250);
+
+  document.getElementById('ask').addEventListener('click', () => {
+    show('position', 'asking...');
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        show(
+          'position',
+          `${position.coords.latitude}, ${position.coords.longitude} (accuracy ${position.coords.accuracy} m)`,
+        ),
+      (error) => show('position', `error ${error.code}: ${error.message}`),
+      { timeout: 5000 },
+    );
+  });
+
+  // Only the copy opened without a query prerenders the other one, so the prerendered document does
+  // not go on to prerender itself.
+  if (location.search === '') {
+    const rules = document.createElement('script');
+    rules.type = 'speculationrules';
+    rules.textContent = JSON.stringify({ prerender: [{ urls: ['manual-check.html?prerendered'] }] });
+    document.head.append(rules);
+    document.getElementById('prerender-link').hidden = false;
+  }
+</script>

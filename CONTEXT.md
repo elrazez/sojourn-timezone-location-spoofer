@@ -28,6 +28,10 @@ _Avoid_: precision, radius
 The time zone and coordinates a covered page observes in place of the real ones.
 _Avoid_: spoofed values, fake values
 
+**Session**:
+The connection Chrome gives Spoofer over one thing it can talk to: a tab, or a frame, worker or service worker inside that tab, which is a child Session of the tab's. An Override is sent to a Session. Distinct from a Context, which is the JavaScript global a Probe is read in, and which a Session is how Spoofer reaches.
+_Avoid_: connection, attachment, debuggee, target
+
 **Covered**:
 A tab whose pages currently observe the Override. The count of covered tabs is what the popup shows.
 _Avoid_: attached, patched, protected

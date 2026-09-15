@@ -222,8 +222,6 @@ function spooferOf(worker: Worker): Spoofer {
   };
 }
 
-
-
 // A tab opened by the service worker itself, so it never sits at about:blank under the harness's
 // control and its first document is the one under test. With no url it lands where a person's new
 // tab starts, which is the New Tab Page.
