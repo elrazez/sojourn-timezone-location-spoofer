@@ -18,7 +18,7 @@ Call the Skill tool with `wizard`. Author `scripts/manual-check.sh` from the ski
 
 Each stage confirms before moving on; no stage captures a secret, so `write_env` and `set_secret` stay unused. The wizard is a repeatable path, so commit it and link it from the README.
 
-Step 1 is complete when `bash -n scripts/manual-check.sh` passes, the user has run it once, and the commit message records the date of that run and any stage that failed.
+Step 1 is complete when `bash -n scripts/manual-check.sh` passes. The human run of it happens after the phase, so no phase waits on it; the control center records the date of that run and any stage that failed.
 
 ## Step 2: packaging
 
@@ -38,12 +38,12 @@ Call the Skill tool with `writing-for-agents` and prune `CLAUDE.md`: delete line
 
 ## Step 5: tag
 
-Commit with the message `phase 07: release v0.1.0`, then `git tag v0.1.0`.
+Amended by the control center: a phase tags a release candidate, never the release. Commit with the message `phase 07: release candidate v0.1.0-rc1`, then `git tag v0.1.0-rc1`, and each follow-up phase on top of it takes the next `v0.1.0-rc<n>`. The human wizard run happens after the phase, and the control center applies `v0.1.0` itself once that run is clean.
 
 ## Done when
 
-- [ ] `scripts/manual-check.sh` exists, is executable, and has been run once by the user.
+- [ ] `scripts/manual-check.sh` exists, is executable, and `bash -n` passes; the human run of it comes after the phase.
 - [ ] `npm run package` produces `spoofer-0.1.0.zip` and `unzip -l` shows `manifest.json` at its root and no `src/` or `test/` entries.
 - [ ] Both reviews ran and their remaining judgement calls are listed in the session.
 - [ ] `README.md` links the wizard and states the mechanism, the bar, and the non-goals.
-- [ ] `git tag --list v0.1.0` prints the tag.
+- [ ] `git tag --list 'v0.1.0-rc*'` prints this phase's release candidate tag.

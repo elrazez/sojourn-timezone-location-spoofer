@@ -45,7 +45,7 @@ A tab that is due the Override and has not observed it yet, because it is still 
 _Avoid_: in progress, waiting, unknown
 
 **Restricted**:
-A tab whose top-level page no extension may touch, such as a browser settings page, another extension's page, or the Chrome Web Store. It is neither Covered nor Not Covered and never counts on the badge.
+A tab whose top-level page no extension may touch and whose refusal names no other kind of tab, such as a browser settings page or the Chrome Web Store. It is neither Covered nor Not Covered and never counts on the badge. Another extension's page is not one: Chrome refuses it in the same words as a web page framing an extension's iframe, so Spoofer counts it Not Covered.
 _Avoid_: blocked, excluded, skipped
 
 **Sealed**:

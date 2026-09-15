@@ -189,7 +189,7 @@ TOTAL_STAGES=13
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PORT="${PORT:-8787}"
-CHECK_URL="http://localhost:${PORT}/manual-check.html"
+CHECK_URL="http://127.0.0.1:${PORT}/manual-check.html"
 SERVER_PID=""
 
 # Every url below is typed into the Chrome that has Spoofer loaded rather than
@@ -210,7 +210,8 @@ verdict() {
 }
 
 # The check page has to come from a real origin, because an extension cannot
-# attach to a file:// page without file access and Spoofer never asks for it.
+# attach to a file:// page without file access and Spoofer never asks for it. It
+# binds the loopback address only, so nothing else on the network can reach it.
 serve_check_page() {
   node -e '
 const http = require("http");
@@ -230,7 +231,7 @@ http
       response.end(body);
     });
   })
-  .listen(Number(port));
+  .listen(Number(port), "127.0.0.1");
 ' "$ROOT/scripts" "$PORT" &
   SERVER_PID=$!
   trap 'if [[ -n "$SERVER_PID" ]]; then kill "$SERVER_PID" 2>/dev/null || true; fi' EXIT
@@ -344,6 +345,9 @@ note "page on another zone while Spoofer still calls the tab covered."
 printf '  %sWhich happened, in a few words:%s ' "$BOLD" "$RESET"
 read -r SENSORS_OUTCOME || true
 note "recorded for the commit message: $SENSORS_OUTCOME"
+step "Close that Sensors tab and its DevTools window: it is the one tab this run leaves"
+step "not covered on purpose, and every later stage reads the badge."
+step "The badge should be empty again before you answer."
 verdict "Did Spoofer and the page agree, whichever side won?" "DevTools and the Sensors panel"
 
 # ── 9 ─────────────────────────────────────────────────────────────────────

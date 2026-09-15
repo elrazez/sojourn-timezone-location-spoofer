@@ -4,7 +4,9 @@
 // Invariants: every visible word is a CONTEXT.md term, so Paused, Off, Covered, Not Covered and
 // Restricted mean here exactly what they mean in the glossary. Nothing is decided in the DOM layer:
 // a string that is empty is a line that is not shown.
-// Pure: no chrome, no DOM, no state, and it never throws.
+// Pure: no chrome, no DOM, no state.
+// Errors: it never throws. A refusal Chrome words in a sentence this module does not know
+// becomes one general line rather than nothing, so a tab that is Not Covered always says so.
 
 import type { CoverageStatus } from './coverage.js';
 import { getCity, searchCities, type City } from './catalog.js';

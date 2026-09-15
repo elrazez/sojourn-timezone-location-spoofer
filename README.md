@@ -4,7 +4,7 @@ A Chrome extension with one job: websites see the time zone and geolocation of a
 
 You pick a city in the popup. From then on every tab reports that city's IANA time zone through `Date`, `Intl` and `Temporal`, and coordinates near it through `navigator.geolocation`. Iframes, workers and service workers inside a covered page report the same values from their first line of script.
 
-Version 0.1.0, tagged `v0.1.0-rc1` because the checks a browser cannot be scripted into doing, the thirteen in [scripts/manual-check.sh](scripts/manual-check.sh), have not been run against a real browser yet. Every automated check is green.
+Version 0.1.0, tagged `v0.1.0-rc2` because the checks a browser cannot be scripted into doing, the thirteen in [scripts/manual-check.sh](scripts/manual-check.sh), have not been run against a real browser yet. Every automated check is green.
 
 ## Read this before you install
 
@@ -22,7 +22,7 @@ Spoofer attaches to each tab with Chrome's `chrome.debugger` API and sends two o
 
 That means there is nothing of Spoofer's in the page: no injected script, no added global, no element, no stylesheet, no console line, no readable resource, and no stack frame that names the extension. A script looking for the extension finds an unmodified browser.
 
-The two permissions it asks for are `debugger` and `storage`. There are no host permissions, no content scripts, no web accessible resources, and one manifest key beyond the two permissions, the new tab page override above. It makes no network request from any context, ever, and stores nothing but your chosen city, the point generated for it, the on/off switch, and, until you close the browser, whether you dismissed the bar. A test asserts the permission list, and scans every file the zip carries for the name of a network API: `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon`, `importScripts`. None of them appears anywhere.
+The two permissions it asks for are `debugger` and `storage`. There are no host permissions, no content scripts, no web accessible resources, and one manifest key beyond the two permissions, the new tab page override above. It makes no network request from any context, ever, and stores nothing but your chosen city, the point generated for it, the on/off switch, and, until you close the browser, whether you dismissed the bar. A test asserts the permission list, and scans every TypeScript file under `src/`, which is all the shipped `dist/` is compiled from, together with the three files that ship beside it (`newtab.html`, `popup.html`, `popup.css`), for the name of a network API: `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon`, `importScripts`. None of them appears anywhere.
 
 The coordinates carry a small random offset generated once per install, up to 2 km from the city centre, so a list of known Spoofer coordinates cannot pick you out. They stay the same until you change city, including across browser restarts.
 
@@ -45,6 +45,8 @@ The Audit is a differential test. It loads a page that reads at least fifty prob
 That is a real result rather than a claim, and it is bounded: it proves it for the probes it takes, in the contexts it can reach, on the machine it ran on. It cannot prove that no probe exists that it does not take. Everything below is a difference it does find, bounded and measured.
 
 ## Residual Traces
+
+Every number here was measured on the machine that ran the phase it names, so expect it to drift by a few milliseconds from one machine to the next; the shape of each row is the claim, not its last digit.
 
 | What a site could notice | How big | Measured by |
 |---|---|---|

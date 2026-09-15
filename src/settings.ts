@@ -11,6 +11,9 @@
 // context reads: the City's point moved by the Jitter, with the Accuracy beside it. Both are
 // generated here and nowhere else, so no two contexts can disagree about them.
 // Change notification is the storage adapter's onChange; Settings does not wrap it.
+// Errors: selectCity throws when the id is not in the Catalog, and a storage failure rejects with
+// Chrome's message rather than being swallowed. A stored Selection missing any of its three numbers
+// reads as no Selection, so no tab is ever covered from a half-written one.
 
 import { getCity, type City } from './catalog.js';
 import type { Coordinates } from './chrome/debugger.js';
