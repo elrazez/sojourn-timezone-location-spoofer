@@ -6,3 +6,4 @@ playwright-report/
 *.zip
 .DS_Store
 test/audit/residuals.json
+.env

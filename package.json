@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "description": "Chrome extension that presents websites with the geolocation and time zone of a City the user picks.",
+  "license": "MIT",
+  "repository": "https://github.com/elrazez/Spoofer",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

@@ -69,7 +69,7 @@ Every number here was measured on the machine that ran the phase it names, so ex
 
 Chrome cannot install a zip directly, so both paths end at the same place.
 
-**From the release zip:** unzip `spoofer-0.1.0.zip` somewhere you will keep it, open `chrome://extensions`, turn Developer mode on, click "Load unpacked" and choose the unzipped folder.
+**From a packaged zip:** `spoofer-0.1.0.zip` is what `npm run package` produces, and what a release carries. Unzip it somewhere you will keep it, open `chrome://extensions`, turn Developer mode on, click "Load unpacked" and choose the unzipped folder.
 
 **From this repository:** run `npm install && npm run build`, then load the `extension/` folder the same way.
 
@@ -115,3 +115,7 @@ It builds the extension, serves its own check page from your machine, and tells 
 - [docs/research/](docs/research/): what Chrome actually does, cited to its source.
 - [docs/plan/](docs/plan/): the build, one prompt per phase.
 - [CLAUDE.md](CLAUDE.md): the rules agents work under in this repository.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
