@@ -36,6 +36,16 @@ Notes that settle the table:
 - Web Store matching is by domain: `return url.DomainIs(GetWebstoreLaunchURL().host()) || url.DomainIs(GetNewWebstoreLaunchURL().host());` (`extensions/common/extension_urls.cc` 145-148), with `kChromeWebstoreBaseURL[] = "https://chrome.google.com/webstore"` and `kNewChromeWebstoreBaseURL[] = "https://chromewebstore.google.com/"` (41-42). Consequence: every `chrome.google.com` URL is restricted, not only `/webstore`.
 - Valid extension schemes are `http, https, file, ftp, chrome, chrome-extension, filesystem, ws, wss, data, uuid-in-package` (`extensions/common/url_pattern.cc` 34-41). `devtools:` is not in the list, so it takes the `kCannotAccessPage` branch.
 
+**An extension New Tab Page is a `chrome://` URL to this check, and it commits within tens of milliseconds.** Measured, not read out of source: with `chrome_url_overrides.newtab` set, Chrome keeps the tab's url at `chrome://newtab/` while the extension page is the document, so `attach`, `detach` and every `sendCommand` about that tab take the `Cannot access a chrome:// URL` row above once it commits. The measurement probes a brand new tab with `chrome.debugger.detach`, which changes nothing and answers `Debugger is not attached to the tab with id: N.` while the tab is reachable and `Cannot access a chrome:// URL` once it is not:
+
+| From | To | Warm (19 tabs) | First tab of the browser session |
+|---|---|---|---|
+| `chrome.tabs.create` | first refusal | 10 to 22 ms, median 12 | 389 ms |
+| `chrome.tabs.create` | `tabs.onCreated` in the service worker | 6 to 12 ms | 25 ms |
+| `tabs.onCreated` | first refusal | 4 to 10 ms, median 6 | 365 ms |
+
+Harness: headless Chromium 153 with the extension loaded and no Selection, so Spoofer itself never attaches; probe resolution is one `detach` round trip, 0.5 to 2 ms warm. Consequences: a new tab has single-digit milliseconds of reach once the worker hears about it, which is why Coverage covers a new tab off the service worker's queue; and a tab already sitting on that page can never be attached, detached or sent anything. The tests that pin the behaviour, all in `test/e2e/lifecycle.spec.ts`: "a new tab shows Spoofer blank New Tab Page and is Covered within one reconcile tick", "a tab already showing the New Tab Page when Spoofer starts covering is Restricted, and what it opens next misses" (attach refused), and "Disabling reaches a tab on the New Tab Page only once that tab goes somewhere" (detach refused). ADR-0003 records the decision that rests on this.
+
 **`runtime_blocked_hosts` is all-or-nothing and new in 154.** The attach code:
 
 > `// Reject if an untrusted extension has any runtime blocked hosts configured by enterprise policy, because attaching the debugger grants raw CDP access that cannot be restricted to specific hosts.` followed by `!extension()->permissions_data()->policy_blocked_hosts().is_empty()` (1051-1057)

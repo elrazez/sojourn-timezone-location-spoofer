@@ -28,6 +28,9 @@ export type World = {
   cover(tabId: number): Promise<CoverageEvent[]>;
   refuse(...refusals: Refusal[]): void;
   allow(command: Command['type']): void;
+  // A write to local storage that did not come through Settings, which is what the popup's write
+  // looks like from the service worker: the value is there before the change event is folded in.
+  store(values: Record<string, unknown>): void;
   status(): ReturnType<typeof status>;
   state(): CoverageState;
   zoneOf(target: SessionTarget): string | undefined;
@@ -98,9 +101,11 @@ export function world(options: WorldOptions = {}): World {
     onChange() {},
   });
 
+  const open: TabState[] = [...(options.tabs ?? [])];
+
   const tabs: TabsAdapter = {
     async list() {
-      return [...(options.tabs ?? [])];
+      return [...open];
     },
     onCreated() {},
     onUpdated() {},
@@ -127,6 +132,9 @@ export function world(options: WorldOptions = {}): World {
       return settled.commands;
     },
     async cover(tabId) {
+      // The browser has the tab by the time it says a tab was created, so a read inside this cycle
+      // finds it there.
+      if (!open.some((tab) => tab.id === tabId)) open.push({ id: tabId, loading: true });
       const events = await coverTab(state, tabId, adapters);
       state = events.reduce(reduce, state);
       return events;
@@ -136,6 +144,9 @@ export function world(options: WorldOptions = {}): World {
     },
     allow(command) {
       refusals = refusals.filter((r) => r.command !== command);
+    },
+    store(values) {
+      for (const [storageKey, value] of Object.entries(values)) local.set(storageKey, value);
     },
     status: () => status(state),
     state: () => state,

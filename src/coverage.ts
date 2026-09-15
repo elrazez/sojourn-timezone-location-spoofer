@@ -43,6 +43,8 @@ export type CoverageState = {
   paused: boolean;
   pausedSaved: boolean | null;
   tabs: ReadonlyMap<number, Tab>;
+  // Tabs Chrome has closed, so a status it reports about one afterwards cannot bring it back.
+  closed: ReadonlySet<number>;
   sessions: ReadonlyMap<string, Session>;
   badge: Badge | null;
   // When state was last read from the browser, and why that read is not to be trusted if it failed.
@@ -139,6 +141,7 @@ export const NO_COVERAGE: CoverageState = {
   paused: false,
   pausedSaved: null,
   tabs: new Map(),
+  closed: new Set(),
   sessions: new Map(),
   badge: null,
   derived: null,
@@ -155,11 +158,26 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
       const fresh = JSON.stringify(state.selection) !== JSON.stringify(event.selection);
       // Switching Enabled back on is the other way out of Paused, beside the popup's Resume.
       const paused = event.paused && !(event.enabled && !state.enabled);
+      // Whether any tab is due the Override at all, which is the question reconcile asks too.
+      const covering =
+        event.enabled && !paused && event.selection !== null && getCity(event.selection.cityId) !== undefined;
       const tabs = new Map<number, Tab>(
-        event.tabs.map((tab) => [
-          tab.id,
-          { loadingSince: state.now, ...state.tabs.get(tab.id), loading: tab.loading },
-        ]),
+        event.tabs
+          // A tab this read still lists can have been closed while the read was in flight, and the
+          // list must not bring back a tab nothing will ever close again.
+          .filter((tab) => !state.closed.has(tab.id))
+          .map((tab) => {
+            const known = state.tabs.get(tab.id);
+            // A tab first seen while nothing is due may still carry a session from before a worker
+            // restart, and Chrome offers no way to ask, so it is marked possibly attached and gets a
+            // detach: a "not attached" answer clears the mark, and a Sealed tab keeps it for a retry.
+            const assumed: Tab = {
+              loading: tab.loading,
+              loadingSince: state.now,
+              ...(covering ? {} : { attach: { at: state.now } }),
+            };
+            return [tab.id, known ? { ...known, loading: tab.loading } : assumed];
+          }),
       );
       const sessions = new Map(
         [...state.sessions]
@@ -186,11 +204,17 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
         ? state
         : withTab(state, event.tabId, { loading: true, loadingSince: state.now });
     case 'tab-status': {
+      // A status can arrive about a tab Chrome has already closed, and nothing would ever close it
+      // again, so a tab known to be gone is never materialised by one.
+      if (!state.tabs.has(event.tabId) && state.closed.has(event.tabId)) return state;
       // Chrome reports a tab's status in order, so one for a tab the reducer has not seen belongs
       // to a tab still being covered off the queue, and is the newest thing known about it.
       const tab = state.tabs.get(event.tabId) ?? { loading: event.loading, loadingSince: state.now };
+      // Whatever Chrome refused was about the document this tab is leaving or has just replaced, so
+      // the refusal is dropped and the tab is asked again.
+      const { refused: _stale, ...kept } = tab;
       const next = withTab(state, event.tabId, {
-        ...tab,
+        ...kept,
         loading: event.loading,
         loadingSince: event.loading ? state.now : tab.loadingSince,
       });
@@ -200,7 +224,11 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
     case 'tab-removed': {
       const tabs = new Map(state.tabs);
       tabs.delete(event.tabId);
-      return dropSessions({ ...state, tabs }, event.tabId);
+      // Chrome can still report a status about a tab it has closed, and it never reuses a tab id,
+      // so the last closures are remembered rather than let back in as a tab nothing will close.
+      // ponytail: 64 is far more than the events that can be in flight; a ring buffer if it is not.
+      const closed = new Set([...state.closed, event.tabId].slice(-64));
+      return dropSessions({ ...state, tabs, closed }, event.tabId);
     }
     case 'attached':
       // A tab that has already gone stays gone: a late answer must not bring it back.
@@ -222,7 +250,12 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
       return { ...dropSessions(next, event.tabId), paused };
     }
     case 'detach-failed':
-      return seal(state, event.tabId, event.error);
+      // "Not attached" says there was no session to give up, which leaves the tab where a detach
+      // would have. Every other refusal is Chrome saying not now, so the session and its mark stand
+      // and the next status event or tick asks again.
+      return event.error.includes(NOT_ATTACHED)
+        ? reduce(state, { type: 'detached', tabId: event.tabId, reason: 'requested' })
+        : seal(state, event.tabId, event.error);
     case 'child-attached': {
       if (!isAttached(state.tabs.get(event.tabId))) return state;
       const sessions = new Map(state.sessions);
@@ -348,12 +381,15 @@ export function status(state: CoverageState): CoverageStatus {
   };
 }
 
-// A brand new tab has about 15 ms before Chrome commits Spoofer's New Tab Page and starts refusing
-// every call about that tab, so it cannot wait for whatever the service worker is already running:
-// measured, a tab that waited 0 to 2 ms was Covered and one that waited 5 ms or more never was.
+// Chrome commits Spoofer's New Tab Page and starts refusing every call about the tab 10 to 22 ms
+// after it is created, and the service worker hears about the tab 6 to 12 ms of that, so a new tab
+// cannot wait for whatever the worker is already running: measured, a tab that waited 0 to 2 ms was
+// Covered and one that waited 5 ms or more never was.
 // This runs the cycle for that one tab against a copy of the state and hands the events back, so
 // the caller folds them in where every other event goes. Nothing already under way can name a tab
 // that did not exist when it started, which is why one tab can be taken out of the queue's order.
+// The one command here that is not about the tab is the read of the settings, which is what the
+// tab's own commands are decided from: right after a City change there is nothing else to go on.
 export async function cover(
   state: CoverageState,
   tabId: number,
@@ -364,9 +400,11 @@ export async function cover(
   return [created, ...cycled.events];
 }
 
-// Whether a command is about this tab. Everything but the badge and the two that read or write
-// settings names one.
+// Whether a command is about this tab, plus the read every other command is decided from: a
+// settings change empties that read, and a new tab has no time to wait for the queue to fill it in
+// again, so the cycle does it here rather than issue nothing at all.
 function isAbout(command: Command, tabId: number): boolean {
+  if (command.type === 'rederive') return true;
   if ('target' in command) return command.target.tabId === tabId;
   return 'tabId' in command && command.tabId === tabId;
 }
@@ -504,7 +542,12 @@ function tabStatus(state: CoverageState, tabId: number): 'covered' | 'not covere
   // Fail loud: one failed send anywhere in the tab means some context is not covered.
   if (own.some((session) => refusalIn(session) !== undefined)) return 'not covered';
   const top = own.find((session) => !session.sessionId);
-  return top?.sends.zone && top.sends.zone.error === undefined ? 'covered' : 'pending';
+  if (top?.sends.zone && top.sends.zone.error === undefined) return 'covered';
+  // Chrome refused every call about this tab before anything landed on it, so the tab is out of
+  // reach rather than on its way, and the popup names it instead of leaving it Pending for as long
+  // as the page it cannot be asked about is shown.
+  if (tab.refused?.error !== undefined && isRestricted(tab.refused.error)) return 'restricted';
+  return 'pending';
 }
 
 function reasonFor(state: CoverageState, tabId: number): string {

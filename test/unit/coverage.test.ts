@@ -135,7 +135,15 @@ test('scenario 7: a tab closed while it is still attaching does not come back', 
 test('scenario 10: with no Selection nothing attaches and no bar appears', async () => {
   const it = started({ stored: { enabled: true }, tabs: [{ id: 1, loading: false }, { id: 2, loading: false }] });
 
-  expect(await it.settle()).toEqual([{ type: 'rederive' }, { type: 'badge', text: '', color: ALERT }]);
+  // A detach is not an attach and shows no bar: a fresh worker cannot tell a fresh install from one
+  // that was covering a moment ago, so it offers every tab its session back and Chrome says there
+  // was none. Nothing else is sent, and nothing is attached.
+  expect(await it.settle()).toEqual([
+    { type: 'rederive' },
+    { type: 'detach', tabId: 1 },
+    { type: 'detach', tabId: 2 },
+    { type: 'badge', text: '', color: ALERT },
+  ]);
 
   it.apply({ type: 'tab-created', tabId: 3 }, { type: 'tick', now: 1000 });
   expect(await it.settle()).toEqual([]);
@@ -484,6 +492,85 @@ test('the next tick comes fast while a tab is loading and unattached, and is bou
   // A tab that has been loading for half a minute is wedged, not worth polling twenty times a second.
   it.apply({ type: 'tick', now: 30_000 });
   expect(nextTick(it.state())).toBe(1000);
+});
+
+test('a worker that restarts Disabled gives every tab up, and a Sealed one on its next status', async () => {
+  const it = started({
+    stored: { selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: false },
+    tabs: [{ id: 1, loading: false }, { id: 2, loading: false }],
+  });
+  // Tab 1 never had a session and answers so; tab 2 is showing Spoofer's New Tab Page, which Chrome
+  // refuses every call about, including the detach that would hand the real zone back.
+  it.refuse(
+    { command: 'detach', tabId: 1, error: 'Debugger is not attached to the tab with id: 1.' },
+    { command: 'detach', tabId: 2, error: 'Cannot access a chrome:// URL' },
+  );
+
+  // Nothing in a fresh worker says which tabs still carry a session, so both are asked.
+  expect(await it.settle()).toEqual([
+    { type: 'rederive' },
+    { type: 'detach', tabId: 1 },
+    { type: 'detach', tabId: 2 },
+    { type: 'badge', text: 'OFF', color: OFF },
+  ]);
+
+  // Tab 1 answered that there was nothing to give up, so it is not asked again; tab 2 is.
+  it.apply({ type: 'tick', now: 1000 });
+  expect(await it.settle()).toEqual([{ type: 'detach', tabId: 2 }]);
+
+  // And the navigation off the New Tab Page is what finally lands it.
+  it.allow('detach');
+  it.apply({ type: 'tab-status', tabId: 2, loading: true });
+  expect(await it.settle()).toEqual([{ type: 'detach', tabId: 2 }]);
+  expect(await it.settle()).toEqual([]);
+});
+
+test('a status about a tab Chrome has closed does not bring it back', async () => {
+  const it = covering('tokyo', [1]);
+  await it.settle();
+  expect(it.status().covered).toBe(1);
+
+  // The tab goes, and the onUpdated that was already on its way arrives about a tab that is gone.
+  it.apply({ type: 'tab-removed', tabId: 1 }, { type: 'tab-status', tabId: 1, loading: false });
+
+  expect(await it.settle()).toEqual([]);
+  expect(it.status()).toMatchObject({ covered: 0, pending: 0, restricted: 0, notCovered: [] });
+  expect(it.status().badge).toEqual({ text: '', color: ALERT });
+});
+
+test('a tab created while a City change is still being read is Covered, not Restricted', async () => {
+  const it = covering('tokyo', [1]);
+  await it.settle();
+
+  // The popup has written the new Selection and the worker has heard about it; the read that turns
+  // it into state has not run when the user opens a tab.
+  it.store({ selection: { cityId: 'los-angeles', coordinates: NEAR_LOS_ANGELES } });
+  it.apply({ type: 'settings-changed' });
+  await it.cover(9);
+
+  // Chrome commits Spoofer's New Tab Page a few milliseconds later and refuses every call about the
+  // tab from then on, so a cover that issued nothing has missed the tab's only window.
+  it.refuse({ command: 'attach', tabId: 9, error: 'Cannot access a chrome:// URL' });
+  it.apply({ type: 'tab-status', tabId: 9, loading: false });
+  await it.settle();
+
+  expect(it.status()).toMatchObject({ covered: 2, pending: 0, restricted: 0, notCovered: [] });
+  expect(it.zoneOf({ tabId: 9 })).toBe(LOS_ANGELES);
+});
+
+test('a tab sealed before its zone landed reads Restricted, not Pending', async () => {
+  const it = covering('tokyo', []);
+  await it.settle();
+
+  // Attached at creation, then Chrome commits the New Tab Page and refuses everything about the tab
+  // before the zone lands, which is the one order that used to leave the tab Pending for ever.
+  it.refuse({ command: 'zone', tabId: 5, error: 'Cannot access a chrome:// URL' });
+  await it.cover(5);
+  it.apply({ type: 'tab-status', tabId: 5, loading: false });
+  await it.settle();
+
+  expect(it.status()).toMatchObject({ covered: 0, pending: 0, restricted: 1, notCovered: [] });
+  expect(it.status().badge).toEqual({ text: '', color: ALERT });
 });
 
 test('a child whose zone is refused is still released, and the refusal is its last send result', async () => {

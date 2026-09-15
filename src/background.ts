@@ -2,9 +2,12 @@
 // storage changes, tab events, detaches, child sessions, and a periodic tick all become Coverage
 // events, and every event is folded, reconciled, and run in one serialised queue so two events
 // cannot command the same tab twice. A tab that has just been created is the one thing that does not
-// queue: Coverage covers it on the spot and the queue folds in what came back, because the tab has
-// about 15 ms before Chrome seals Spoofer's New Tab Page against every call. It re-derives state on
-// start, which is what makes a worker restart invisible.
+// queue: Coverage covers it on the spot and the queue folds in what came back, because Chrome seals
+// Spoofer's New Tab Page against every call 10 to 22 ms after the tab is created, and this listener
+// hears about the tab 6 to 12 ms of that. That cycle reads the
+// settings itself when a change has just emptied them, so a tab opened right after a City change is
+// covered rather than left out. It re-derives state on start, which makes a worker restart
+// invisible.
 // Errors: a refused attach or send is recorded inside Coverage and shows up in the status it
 // exposes. A step that throws anyway is recorded as a failed run and the queue carries on, because
 // one bad event must not stop the next.
