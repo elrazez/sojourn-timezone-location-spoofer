@@ -4,7 +4,7 @@ A Chrome extension with one job: websites see the time zone and geolocation of a
 
 You pick a city in the popup. From then on every tab reports that city's IANA time zone through `Date`, `Intl` and `Temporal`, and coordinates near it through `navigator.geolocation`. Iframes, workers and service workers inside a covered page report the same values from their first line of script.
 
-Version 0.1.0, tagged `v0.1.0-rc2` because the checks a browser cannot be scripted into doing, the thirteen in [scripts/manual-check.sh](scripts/manual-check.sh), have not been run against a real browser yet. Every automated check is green.
+Version 0.1.0. Every automated check is green, and the thirteen checks a browser cannot be scripted into doing, in [scripts/manual-check.sh](scripts/manual-check.sh), passed in a real Chrome on 2026-09-15.
 
 ## Read this before you install
 
