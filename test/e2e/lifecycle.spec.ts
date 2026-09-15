@@ -2,7 +2,9 @@
 // crash, are discarded, or start life somewhere Spoofer cannot attach.
 
 import { fileURLToPath } from 'node:url';
+import type { Worker } from '@playwright/test';
 import {
+  BASELINE_OFFSET,
   BASELINE_ZONE,
   TOKYO_OFFSET,
   TOKYO_ZONE,
@@ -22,7 +24,7 @@ const ANOTHER_CLIENTS_ZONE = 'Europe/Paris';
 // Long enough to hold the detach, the fallback, and the reconcile that takes the zone back.
 const SAMPLE_ACROSS_DETACH = 2000;
 
-const badge = (worker: import('@playwright/test').Worker) =>
+const badge = (worker: Worker) =>
   worker.evaluate(async () => ({
     text: await chrome.action.getBadgeText({}),
     color: await chrome.action.getBadgeBackgroundColor({}),
@@ -202,25 +204,160 @@ test('a discarded tab observes Asia/Tokyo when it is brought back', async ({
   expect(origins.readings.at(-1)).toEqual({ zone: TOKYO_ZONE, offset: TOKYO_OFFSET });
 });
 
-test('a tab leaving the New Tab Page observes Asia/Tokyo in its first script', async ({
+// Ten of anything here is the plan's count: one load proves the mechanism, ten say it is not a race
+// that happened to be won.
+const LOADS = 10;
+
+test('a new tab shows Spoofer blank New Tab Page and is Covered within one reconcile tick', async ({
+  context,
+  extensionId,
+  spoofer,
+  worker,
+}) => {
+  await spoofer.select('tokyo');
+
+  const { page } = await openTab(context, worker);
+
+  expect(page.url()).toBe(`chrome-extension://${extensionId}/newtab.html`);
+  expect(await page.title()).toBe('Spoofer');
+  expect(
+    await page.evaluate(() => ({
+      body: document.body.innerHTML.trim(),
+      scripts: document.scripts.length,
+      styles: document.querySelectorAll('style, link, [style]').length,
+      // Nothing in the page is focused, because the page has nothing to focus, which is what lets
+      // Chrome put the caret in the omnibox. Measured, not asserted: document.hasFocus() reads true
+      // here, because a headless browser has no omnibox to take it away.
+      activeElement: document.activeElement?.tagName ?? 'none',
+    })),
+  ).toEqual({ body: '', scripts: 0, styles: 0, activeElement: 'BODY' });
+
+  // The slow reconcile tick is 1000 ms, so a tab that is not Covered inside two seconds was not
+  // covered by one tick. This tab and the one the browser opened with are the only two.
+  await expect.poll(() => readZone(page), { timeout: 2000 }).toBe(TOKYO_ZONE);
+  await expect.poll(async () => (await spoofer.status()).covered, { timeout: 2000 }).toBe(2);
+  expect(await spoofer.status()).toMatchObject({ pending: 0, restricted: 0, notCovered: [] });
+  expect((await badge(worker)).text).toBe('');
+});
+
+test('a tab leaving the New Tab Page observes Asia/Tokyo in its first script, ten times in ten', async ({
   context,
   origins,
   spoofer,
   worker,
 }) => {
-  // Measured 10 misses in 10 loads, before and after the brief's 20 ms attach retry was added:
-  // Chrome refuses the attach while chrome://new-tab-page is committed, so it can only land after
-  // the next document has committed, which is after its first script ran. The retry still shortens
-  // the window where the tab is Not Covered from a second to 20 ms, so it stays.
-  test.skip(true, 'the attach cannot land before the first script: 10 misses in 10 loads');
+  await spoofer.select('tokyo');
+
+  const firsts = [];
+  for (let load = 0; load < LOADS; load += 1) {
+    const page = (await openCoveredTab(context, worker, `${origins.localhost}index.html`, TOKYO_ZONE)).page;
+    firsts.push(await readFirst(page));
+    await page.close();
+  }
+
+  expect(firsts).toEqual(Array(LOADS).fill({ zone: TOKYO_ZONE, offset: TOKYO_OFFSET }));
+});
+
+test('a tab leaving the New Tab Page onto a document the browser already holds observes Asia/Tokyo in its first script', async ({
+  context,
+  origins,
+  spoofer,
+  worker,
+}) => {
+  await spoofer.select('tokyo');
+  // Primed in a tab that is already Covered, so the ten loads below read it out of the cache: this
+  // is the case that used to lose, because no request goes out for the attach to beat.
+  const cached = `${origins.localhost}index.html?cache=3600`;
+  const primer = await coveredPage(context, TOKYO_ZONE);
+  await primer.goto(cached);
+  // And once more through the flow under test, because Chrome writes the cache entry after the
+  // response rather than before it: measured, the load right after the primer still reaches the
+  // server and every load after that one does not.
+  await (await openCoveredTab(context, worker, cached, TOKYO_ZONE)).page.close();
+  const servedBefore = origins.requests.filter((asked) => asked === cached).length;
+
+  const firsts = [];
+  for (let load = 0; load < LOADS; load += 1) {
+    const { page } = await openCoveredTab(context, worker, cached, TOKYO_ZONE);
+    firsts.push(await readFirst(page));
+    await page.close();
+  }
+
+  expect(firsts).toEqual(Array(LOADS).fill({ zone: TOKYO_ZONE, offset: TOKYO_OFFSET }));
+  expect(origins.requests.filter((asked) => asked === cached).length - servedBefore).toBe(0);
+});
+
+test('a tab leaving the New Tab Page observes the Selection point from a position call in its first script', async ({
+  context,
+  origins,
+  spoofer,
+  worker,
+}) => {
+  await context.grantPermissions(['geolocation']);
+  const selection = await spoofer.select('tokyo');
+
+  // One load, because the position lives on the tab in the browser process rather than in the
+  // document: it is set before the navigation and is not the race the zone is.
+  const { page } = await openCoveredTab(context, worker, `${origins.localhost}first.html`, TOKYO_ZONE);
+
+  expect(await readFirst(page)).toEqual({ zone: TOKYO_ZONE, offset: TOKYO_OFFSET });
+  expect(await page.evaluate(() => (window as unknown as { __firstPosition: Promise<unknown> }).__firstPosition)).toEqual({
+    latitude: selection.coordinates.latitude,
+    longitude: selection.coordinates.longitude,
+    accuracy: selection.coordinates.accuracy,
+  });
+});
+
+test('a tab already showing the New Tab Page when Spoofer starts covering is Restricted, and what it opens next misses', async ({
+  context,
+  origins,
+  spoofer,
+  worker,
+}) => {
+  // Chrome seals a tab against every call while it shows an extension New Tab Page, so a tab
+  // already sitting there when Spoofer starts covering can never be attached. This is the gap the
+  // override leaves, and it is the browser start and the first Selection.
+  const { page, tabId } = await openTab(context, worker);
+  await page.waitForLoadState();
 
   await spoofer.select('tokyo');
-  const { page } = await openTab(context, worker, 'chrome://new-tab-page');
   await expect.poll(async () => (await spoofer.status()).restricted).toBe(1);
+  expect((await spoofer.status()).notCovered).toEqual([]);
 
-  await page.goto(`${origins.localhost}index.html`);
+  const url = `${origins.localhost}index.html`;
+  await worker.evaluate((asked) => chrome.tabs.update(asked.id, { url: asked.url }), { id: tabId, url });
+  await page.waitForURL((current) => current.href === url);
 
-  expect(await readFirst(page)).toMatchObject({ zone: TOKYO_ZONE });
+  expect(await readFirst(page)).toEqual({ zone: BASELINE_ZONE, offset: BASELINE_OFFSET });
+  // The tab is attachable again the moment it leaves, so everything after that first script is
+  // Covered.
+  await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
+});
+
+test('Disabling reaches a tab on the New Tab Page only once that tab goes somewhere', async ({
+  context,
+  origins,
+  spoofer,
+  worker,
+}) => {
+  await spoofer.select('tokyo');
+  const { page, tabId } = await openTab(context, worker);
+  await expect.poll(() => readZone(page)).toBe(TOKYO_ZONE);
+
+  await spoofer.enable(false);
+  await expect.poll(async () => (await spoofer.status()).enabled).toBe(false);
+
+  const url = `${origins.localhost}index.html`;
+  await worker.evaluate((asked) => chrome.tabs.update(asked.id, { url: asked.url }), { id: tabId, url });
+  await page.waitForURL((current) => current.href === url);
+
+  // Chrome refused the detach while the tab was Sealed and replays the session Spoofer was not
+  // allowed to give up, so this one document still observes the Override in its first script.
+  expect(await readFirst(page)).toEqual({ zone: TOKYO_ZONE, offset: TOKYO_OFFSET });
+  // The tab is reachable again the moment it leaves, so the next tick gives the session up and the
+  // page is handed its real zone back. Reporting that refused detach as a detach is what used to
+  // leave the Override on this tab for good.
+  await expect.poll(() => readZone(page)).toBe(BASELINE_ZONE);
 });
 
 test('a tab created straight onto another site observes Asia/Tokyo in its first script', async ({
@@ -233,6 +370,9 @@ test('a tab created straight onto another site observes Asia/Tokyo in its first 
   // service worker about 12 ms after the document request is already in flight, and the attach and
   // the zone send add about 30 ms, so the zone lands about 10 ms late. The gap is that narrow:
   // serving the same page with 25 ms of latency gives 0 misses in 5, as do 50, 100 and 200 ms.
+  // Re-measured in phase 06.1 at 9 misses in 10, after covering a new tab stopped waiting for the
+  // queue: a tab created straight onto a url has no window to win, because the request is already
+  // out when the service worker hears about the tab.
   test.skip(true, 'the zone lands about 10 ms after the first script when the document is local');
 
   await spoofer.select('tokyo');

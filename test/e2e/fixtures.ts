@@ -225,33 +225,41 @@ function spooferOf(worker: Worker): Spoofer {
 
 
 // A tab opened by the service worker itself, so it never sits at about:blank under the harness's
-// control and its first document is the one under test.
+// control and its first document is the one under test. With no url it lands where a person's new
+// tab starts, which is the New Tab Page.
 export async function openTab(
   context: BrowserContext,
   worker: Worker,
-  url: string,
+  url?: string,
 ): Promise<{ page: Page; tabId: number }> {
   const [page, tabId] = await Promise.all([
     context.waitForEvent('page'),
-    worker.evaluate(async (where) => (await chrome.tabs.create({ url: where })).id ?? -1, url),
+    worker.evaluate(
+      async (where) => (await chrome.tabs.create(where === undefined ? {} : { url: where })).id ?? -1,
+      url,
+    ),
   ]);
   return { page, tabId };
 }
 
-// A tab the service worker opened at about:blank, covered, and only then sent to its url: the way
-// a person opens a tab and then goes somewhere.
+// A tab the service worker opened where a person opens one, which is Spoofer's New Tab Page,
+// Covered while it sits there, and only then sent where they typed. chrome.tabs.update is Chrome
+// navigating the tab, the move the omnibox makes. Measured, not asserted: navigating in the same
+// millisecond the tab is created misses 6 times in 10, because the attach is then racing the
+// navigation rather than the page.
 export async function openCoveredTab(
   context: BrowserContext,
   worker: Worker,
   url: string,
   zone: string,
 ): Promise<{ page: Page; tabId: number }> {
-  const { page, tabId } = await openTab(context, worker, 'about:blank');
+  const { page, tabId } = await openTab(context, worker);
   await expect.poll(() => readZone(page)).toBe(zone);
   await worker.evaluate(
     (asked) => chrome.tabs.update(asked.id, { url: asked.url }),
     { id: tabId, url },
   );
+  await page.waitForURL((current) => current.href === url);
   return { page, tabId };
 }
 

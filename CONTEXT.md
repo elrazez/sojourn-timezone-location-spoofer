@@ -44,6 +44,10 @@ _Avoid_: in progress, waiting, unknown
 A tab whose top-level page no extension may touch, such as a browser settings page, another extension's page, or the Chrome Web Store. It is neither Covered nor Not Covered and never counts on the badge.
 _Avoid_: blocked, excluded, skipped
 
+**Sealed**:
+A tab Chrome refuses every `chrome.debugger` call about, because the url it shows is a `chrome://` one. The session Spoofer already holds stands, so a Sealed tab can be Covered and out of reach at the same time.
+_Avoid_: locked, unreachable, frozen
+
 **Paused**:
 The state after the user dismisses Chrome's debugging bar: no tab is Covered until the user presses Resume or switches Enabled back on. Distinct from Disabled, which the user chose in the popup.
 _Avoid_: stopped, suspended, cancelled
@@ -59,6 +63,10 @@ _Avoid_: counter, indicator, icon
 **Popup**:
 Spoofer's one screen: a search over the Catalog, the Selection, the Enabled switch, what is Covered, and the Paused notice with its Resume. A window a page opened for itself is not this, even where the brief calls that a popup too.
 _Avoid_: panel, dialog, options page
+
+**New Tab Page**:
+The blank page of Spoofer's own that Chrome shows in every new tab, which exists so a tab is attachable before it goes anywhere. Chrome's own New Tab Page is not one Spoofer may attach to.
+_Avoid_: start page, home page, blank tab
 
 **Trace**:
 Any observable difference between a covered page and the same page in an unmodified browser, other than the Override itself.

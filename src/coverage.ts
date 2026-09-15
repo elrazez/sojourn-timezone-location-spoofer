@@ -2,13 +2,16 @@
 // records what it got. Nothing outside this file knows the coverage rules.
 //   settle(state, events, ads) -> folds the events in, then reconciles, runs and folds what came
 //                                 back until nothing is due; the next state and every command it
-//                                 issued. The only impure step, and the only caller of an adapter
+//                                 issued
+//   cover(state, tabId, ads)   -> the same cycle for one brand new tab and nothing else, off a copy
+//                                 of the state; the events it produced, for the caller to fold in
+// settle and cover are the only impure steps and the only callers of an adapter.
 //   reduce(state, event)       -> the next state; pure, total, order-dependent (events fold in order)
 //   reconcile(state)           -> the commands that state needs now; pure, empty when nothing is due
 //   status(state)              -> what the badge and the popup show; pure
 //   nextTick(state)            -> how long until reconcile is worth running again; pure
 // Ordering: reduce every event, then reconcile, then run, then reduce the events that came back.
-// Each round leaves less to do, so settle ends; it gives up after a bound rather than spin.
+// Each round leaves less to do, so a cycle ends; it gives up after a bound rather than spin.
 // Invariants: nothing attaches unless Enabled, not Paused, and a Selection exists. A failure is
 // recorded once and retried on the next tick, never in a tight loop. Every tick re-sends the zone
 // to every session, which is what retakes a renderer process whose override was released when
@@ -28,7 +31,9 @@ type Send = { at: number; error?: string };
 export type SendKind = 'zone' | 'autoAttach' | 'resumed' | 'geolocation';
 
 // attach is absent until the first try; present without an error means the session is ours.
-type Tab = { loading: boolean; loadingSince: number; attach?: Send };
+// refused is the last answer Chrome gave about a Sealed tab, which is what stops Spoofer asking
+// again until the next tick.
+type Tab = { loading: boolean; loadingSince: number; attach?: Send; refused?: Send };
 
 type Session = { tabId: number; sessionId?: string; sends: Partial<Record<SendKind, Send>> };
 
@@ -60,6 +65,7 @@ export type CoverageEvent =
   | { type: 'attached'; tabId: number }
   | { type: 'attach-failed'; tabId: number; error: string }
   | { type: 'detached'; tabId: number; reason: string }
+  | { type: 'detach-failed'; tabId: number; error: string }
   | { type: 'child-attached'; tabId: number; sessionId: string }
   | { type: 'child-detached'; tabId: number; sessionId: string }
   | { type: 'sent'; target: SessionTarget; what: SendKind; error?: string }
@@ -174,10 +180,15 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
     case 'failed':
       return { ...state, derived: { at: state.now, error: event.error } };
     case 'tab-created':
-      return withTab(state, event.tabId, { loading: true, loadingSince: state.now });
+      // A tab the reducer already knows is not new: its status reached here first, while the tab
+      // was being covered off the queue, and says more about it than this does.
+      return state.tabs.has(event.tabId)
+        ? state
+        : withTab(state, event.tabId, { loading: true, loadingSince: state.now });
     case 'tab-status': {
-      const tab = state.tabs.get(event.tabId);
-      if (!tab) return state;
+      // Chrome reports a tab's status in order, so one for a tab the reducer has not seen belongs
+      // to a tab still being covered off the queue, and is the newest thing known about it.
+      const tab = state.tabs.get(event.tabId) ?? { loading: event.loading, loadingSince: state.now };
       const next = withTab(state, event.tabId, {
         ...tab,
         loading: event.loading,
@@ -210,6 +221,8 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
         : state;
       return { ...dropSessions(next, event.tabId), paused };
     }
+    case 'detach-failed':
+      return seal(state, event.tabId, event.error);
     case 'child-attached': {
       if (!isAttached(state.tabs.get(event.tabId))) return state;
       const sessions = new Map(state.sessions);
@@ -225,6 +238,11 @@ export function reduce(state: CoverageState, event: CoverageEvent): CoverageStat
       // A send that lands nowhere says the tab is not attached to Spoofer, whatever the attach
       // answered, so record the refusal on the tab and let a later tick attach it again.
       if (event.error?.includes(NOT_ATTACHED)) return unattach(state, event.target.tabId, event.error);
+      // A Sealed tab answers every call the same way and says nothing about the session, which is
+      // still attached and still carries what last landed, so nothing is recorded against it.
+      if (event.error !== undefined && isRestricted(event.error)) {
+        return seal(state, event.target.tabId, event.error);
+      }
       const sent = withSession(state, event.target, (session) => ({
         ...session,
         sends: {
@@ -255,13 +273,20 @@ export function reconcile(state: CoverageState): Command[] {
   const zone = state.selection ? getCity(state.selection.cityId)?.zone : undefined;
 
   if (zone === undefined || !state.enabled || state.paused) {
-    // Nothing is due, so give every session up: that is what hands the real values back.
-    for (const [tabId, tab] of state.tabs) if (isAttached(tab)) commands.push({ type: 'detach', tabId });
+    // Nothing is due, so give every session up: that is what hands the real values back. A Sealed
+    // tab refuses the detach, so it is asked again on the next tick and keeps the Override until it
+    // leaves the page Chrome will not let Spoofer touch.
+    for (const [tabId, tab] of state.tabs) {
+      if (isAttached(tab) && !sealed(tab, state.now)) commands.push({ type: 'detach', tabId });
+    }
   } else {
     for (const [tabId, tab] of state.tabs) {
-      if (!isAttached(tab) && unsettled(tab.attach, state.now)) commands.push({ type: 'attach', tabId });
+      if (!isAttached(tab) && !sealed(tab, state.now) && unsettled(tab.attach, state.now)) {
+        commands.push({ type: 'attach', tabId });
+      }
     }
     for (const session of state.sessions.values()) {
+      if (sealed(state.tabs.get(session.tabId), state.now)) continue;
       const target = targetOf(session);
       const sends = session.sends;
       if (due(sends.zone, state.now)) commands.push({ type: 'zone', target, zone });
@@ -323,19 +348,54 @@ export function status(state: CoverageState): CoverageStatus {
   };
 }
 
+// A brand new tab has about 15 ms before Chrome commits Spoofer's New Tab Page and starts refusing
+// every call about that tab, so it cannot wait for whatever the service worker is already running:
+// measured, a tab that waited 0 to 2 ms was Covered and one that waited 5 ms or more never was.
+// This runs the cycle for that one tab against a copy of the state and hands the events back, so
+// the caller folds them in where every other event goes. Nothing already under way can name a tab
+// that did not exist when it started, which is why one tab can be taken out of the queue's order.
+export async function cover(
+  state: CoverageState,
+  tabId: number,
+  adapters: Adapters,
+): Promise<CoverageEvent[]> {
+  const created: CoverageEvent = { type: 'tab-created', tabId };
+  const cycled = await cycle(reduce(state, created), adapters, (command) => isAbout(command, tabId));
+  return [created, ...cycled.events];
+}
+
+// Whether a command is about this tab. Everything but the badge and the two that read or write
+// settings names one.
+function isAbout(command: Command, tabId: number): boolean {
+  if ('target' in command) return command.target.tabId === tabId;
+  return 'tabId' in command && command.tabId === tabId;
+}
+
 // The whole cycle, which is what the service worker runs and what the reducer tests drive.
 export async function settle(
   state: CoverageState,
   events: readonly CoverageEvent[],
   adapters: Adapters,
 ): Promise<{ state: CoverageState; commands: Command[] }> {
-  let next = events.reduce(reduce, state);
+  return cycle(events.reduce(reduce, state), adapters, () => true);
+}
+
+// Reconcile, run the commands the caller wants, fold what came back, until nothing is due.
+async function cycle(
+  state: CoverageState,
+  adapters: Adapters,
+  wanted: (command: Command) => boolean,
+): Promise<{ state: CoverageState; commands: Command[]; events: CoverageEvent[] }> {
+  let next = state;
   const issued: Command[] = [];
+  const answers: CoverageEvent[] = [];
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    const commands = reconcile(next);
-    if (commands.length === 0) return { state: next, commands: issued };
+    const commands = reconcile(next).filter(wanted);
+    if (commands.length === 0) return { state: next, commands: issued, events: answers };
     issued.push(...commands);
-    next = (await runCommands(commands, adapters)).reduce(reduce, next);
+    const came = await runCommands(commands, adapters);
+    answers.push(...came);
+    next = came.reduce(reduce, next);
   }
   // A round that keeps asking for the same thing is a bug, and looping for ever would hide it.
   throw new Error('coverage never settled');
@@ -362,9 +422,15 @@ async function run(command: Command, adapters: Adapters): Promise<CoverageEvent[
         ),
       ];
     case 'detach':
-      // An explicit detach fires no onDetach event, so the runner reports it.
-      await debuggerAdapter.detach(command.tabId).catch(() => {});
-      return [{ type: 'detached', tabId: command.tabId, reason: 'requested' }];
+      // An explicit detach fires no onDetach event, so the runner reports it. A refused one is not
+      // a detach: the session and the Override it carries stand until a later tick gives them up.
+      return [
+        await answer(
+          () => debuggerAdapter.detach(command.tabId),
+          () => ({ type: 'detached', tabId: command.tabId, reason: 'requested' }),
+          (error) => ({ type: 'detach-failed', tabId: command.tabId, error }),
+        ),
+      ];
     case 'zone':
       return [await sent(command.target, 'zone', () => debuggerAdapter.setTimezone(command.target, command.zone))];
     case 'auto-attach':
@@ -428,7 +494,7 @@ function tabStatus(state: CoverageState, tabId: number): 'covered' | 'not covere
   const tab = state.tabs.get(tabId);
   if (!tab) return 'pending';
   const refused = tab.attach?.error;
-  if (refused !== undefined && RESTRICTED.some((restricted) => refused.includes(restricted))) return 'restricted';
+  if (refused !== undefined && isRestricted(refused)) return 'restricted';
   // A tab that is still loading is due the Override and has not observed it yet, whatever failed
   // so far, so it is Pending and never counts against Spoofer.
   if (tab.loading) return 'pending';
@@ -462,6 +528,12 @@ const refusalIn = (session: Session): string | undefined =>
 
 const isAttached = (tab: Tab | undefined): boolean => tab?.attach !== undefined && tab.attach.error === undefined;
 
+const isRestricted = (error: string): boolean => RESTRICTED.some((restricted) => error.includes(restricted));
+
+// A tab Chrome refused this tick: it has already said no, so nothing more is asked of it until the
+// next one. Spoofer's own New Tab Page is the tab that stays this way for as long as it is shown.
+const sealed = (tab: Tab | undefined, now: number): boolean => tab?.refused !== undefined && tab.refused.at >= now;
+
 // Once a second whatever the tick rate: a re-send is what retakes a renderer whose override was
 // released, and what retries a send that failed.
 const due = (send: Send | undefined, now: number): boolean => !send || now - send.at >= SLOW_TICK;
@@ -479,10 +551,23 @@ function drop(session: Session, what: SendKind): Session {
 }
 
 function attach(state: CoverageState, tabId: number): CoverageState {
-  const tab = state.tabs.get(tabId) ?? { loading: false, loadingSince: state.now };
-  const next = withTab(state, tabId, { ...tab, attach: { at: state.now } });
+  const tab = state.tabs.get(tabId);
+  // Chrome has just answered a call about this tab, so whatever it last refused is over.
+  const next = withTab(state, tabId, {
+    loading: tab?.loading ?? false,
+    loadingSince: tab?.loadingSince ?? state.now,
+    attach: { at: state.now },
+  });
   if (next.sessions.has(String(tabId))) return next;
   return { ...next, sessions: new Map(next.sessions).set(String(tabId), { tabId, sends: {} }) };
+}
+
+// The tab remembers that Chrome refused, so nothing else is asked of it until the next tick, and
+// what already landed on its session stands.
+function seal(state: CoverageState, tabId: number, error: string): CoverageState {
+  const tab = state.tabs.get(tabId);
+  if (!tab) return state;
+  return withTab(state, tabId, { ...tab, refused: { at: state.now, error } });
 }
 
 // The tab keeps the refusal as its attach result, so it reads Not Covered with a reason and the

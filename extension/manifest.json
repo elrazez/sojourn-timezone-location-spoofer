@@ -5,6 +5,7 @@
   "description": "Websites see the geolocation and time zone of a city you pick, and nothing else changes.",
   "minimum_chrome_version": "125",
   "permissions": ["debugger", "storage"],
+  "chrome_url_overrides": { "newtab": "newtab.html" },
   "background": {
     "service_worker": "dist/background.js",
     "type": "module"

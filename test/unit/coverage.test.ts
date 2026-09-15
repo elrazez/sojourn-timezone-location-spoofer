@@ -79,6 +79,46 @@ test('scenario 1: the happy path covers the tab, then its frame and its worker',
   expect(it.status().zoneSends).toBeGreaterThanOrEqual(6);
 });
 
+test('scenario 11: a new tab is Covered before it goes anywhere, and its navigation sends no zone', async () => {
+  const it = started({ stored: { selection: { cityId: 'tokyo', coordinates: NEAR_TOKYO }, enabled: true }, tabs: [] });
+  expect(await it.settle()).toEqual([{ type: 'rederive' }, { type: 'badge', text: '', color: ALERT }]);
+
+  // Off the queue, because a brand new tab showing Spoofer's New Tab Page has about 15 ms before
+  // Chrome refuses every call about it. One attach, one zone, one position.
+  expect(await it.cover(7)).toEqual([
+    { type: 'tab-created', tabId: 7 },
+    { type: 'attached', tabId: 7 },
+    { type: 'sent', target: { tabId: 7 }, what: 'zone' },
+    { type: 'sent', target: { tabId: 7 }, what: 'autoAttach' },
+    { type: 'sent', target: { tabId: 7 }, what: 'geolocation' },
+  ]);
+  // The New Tab Page is still loading, so the tab is Pending: due the Override, not yet seen with it.
+  expect(it.status()).toMatchObject({ covered: 0, pending: 1, restricted: 0, notCovered: [] });
+  expect(it.zoneOf({ tabId: 7 })).toBe(TOKYO);
+
+  // It finishes loading, and that alone makes it Covered: nothing more is sent.
+  it.apply({ type: 'tab-status', tabId: 7, loading: false });
+  expect(await it.settle()).toEqual([]);
+  expect(it.status().covered).toBe(1);
+
+  // The user types a url and the tab leaves. The position belongs to the document, so it goes out
+  // again; the zone does not, because Blink replays it into the next document by itself.
+  it.apply({ type: 'tab-status', tabId: 7, loading: true });
+  expect(await it.settle()).toEqual([{ type: 'geolocation', tabId: 7, coordinates: NEAR_TOKYO }]);
+
+  // And the commit sends nothing at all.
+  it.apply({ type: 'tab-status', tabId: 7, loading: false });
+  expect(await it.settle()).toEqual([]);
+  expect(it.status().covered).toBe(1);
+
+  // Chrome can finish the New Tab Page while the next tab is still being covered off the queue, so
+  // that tab's status reaches the reducer before the tab-created event it belongs to. Measured
+  // while that order was dropped on the floor: 2 of 21 new tabs stayed Pending for ever.
+  it.apply({ type: 'tab-status', tabId: 8, loading: false });
+  await it.cover(8);
+  expect(it.status()).toMatchObject({ covered: 2, pending: 0, notCovered: [] });
+});
+
 test('scenario 7: a tab closed while it is still attaching does not come back', async () => {
   const it = covering('tokyo', []);
   await it.settle();

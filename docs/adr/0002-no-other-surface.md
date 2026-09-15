@@ -6,5 +6,6 @@ Spoofer changes the time zone and the geolocation position a page observes and n
 - No change to `navigator.language`, `Accept-Language`, the user agent, screen, canvas, fonts, WebRTC, IP, DNS, or any other fingerprint surface. The README pairs Spoofer with a VPN instead.
 - No permissions beyond `debugger` and `storage`, and no host permissions.
 - No content scripts, no `web_accessible_resources`, no `externally_connectable`.
+- One manifest capability beyond the two permissions, the New Tab Page override ADR-0003 records, and no other.
 - No protocol method beyond the ones the brief allows.
 - No telemetry, no logging about the user, and nothing stored beyond the Selection, the Enabled switch, and the Paused flag.

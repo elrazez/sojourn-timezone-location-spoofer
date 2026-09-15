@@ -335,6 +335,17 @@ async function backForward(context: BrowserContext, origins: Origins): Promise<u
   return heard;
 }
 
+// Whether a tab was Covered while it sat on Spoofer's New Tab Page. A tab that never gets there is
+// a number here rather than a failed run, which is what a measurement has to be.
+const coveredOnNewTabPage = (page: Page): Promise<boolean> =>
+  expect
+    .poll(() => readZone(page).catch(() => ''), { timeout: 2000 })
+    .toBe(TOKYO_ZONE)
+    .then(
+      () => true,
+      () => false,
+    );
+
 // Ten tabs opened straight onto one url by the service worker, and how many first scripts missed.
 async function loadsInto(context: BrowserContext, worker: import('@playwright/test').Worker, url: string, times: number): Promise<number> {
   let misses = 0;
@@ -374,12 +385,20 @@ test('the residual measurements', async ({ baseline, context, origins, spoofer, 
     ),
   };
 
-  // 5. The New Tab Page, twenty loads, and the first ten of them apart.
-  const newTabPage: boolean[] = [];
+  // 5. The New Tab Page, twenty loads, and the first ten of them apart. A tab opened where a person
+  // opens one, which the override makes Spoofer's own page, then sent where they typed. Chrome's own
+  // chrome://new-tab-page is not where a new tab lands any more, which is the point of ADR-0003.
+  const newTabPageUrl = `${origins.localhost}index.html`;
+  const newTabPage: { covered: boolean; missed: boolean }[] = [];
   for (let load = 0; load < 20; load += 1) {
-    const opened = await openTab(context, worker, 'chrome://new-tab-page');
-    await opened.page.goto(`${origins.localhost}index.html`);
-    newTabPage.push(missed(await readFirst(opened.page).catch(() => undefined)));
+    const opened = await openTab(context, worker);
+    const wasCovered = await coveredOnNewTabPage(opened.page);
+    await worker.evaluate((asked) => chrome.tabs.update(asked.id, { url: asked.url }), {
+      id: opened.tabId,
+      url: newTabPageUrl,
+    });
+    await opened.page.waitForURL((current) => current.href === newTabPageUrl);
+    newTabPage.push({ covered: wasCovered, missed: missed(await readFirst(opened.page).catch(() => undefined)) });
     await opened.page.close();
   }
 
@@ -439,8 +458,9 @@ test('the residual measurements', async ({ baseline, context, origins, spoofer, 
     },
     'new-tab-page-misses': {
       loads: newTabPage.length,
-      misses: newTabPage.filter(Boolean).length,
-      'first ten loads': newTabPage.slice(0, 10).filter(Boolean).length,
+      misses: newTabPage.filter((load) => load.missed).length,
+      'covered before they were navigated': newTabPage.filter((load) => load.covered).length,
+      'first ten loads': newTabPage.slice(0, 10).filter((load) => load.missed).length,
     },
     bar,
     'back-forward-cache': bfcache,

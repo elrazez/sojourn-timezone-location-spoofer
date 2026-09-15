@@ -7,6 +7,7 @@ import type { StorageAdapter } from '../../src/chrome/storage.js';
 import type { TabsAdapter, TabState } from '../../src/chrome/tabs.js';
 import {
   NO_COVERAGE,
+  cover as coverTab,
   reduce,
   settle as settleCoverage,
   status,
@@ -22,6 +23,9 @@ export type Refusal = { command: Command['type']; tabId?: number; sessionId?: st
 export type World = {
   apply(...events: CoverageEvent[]): void;
   settle(): Promise<Command[]>;
+  // A brand new tab, covered off the queue the way the service worker does it: the events that came
+  // back, folded in as the service worker folds them.
+  cover(tabId: number): Promise<CoverageEvent[]>;
   refuse(...refusals: Refusal[]): void;
   allow(command: Command['type']): void;
   status(): ReturnType<typeof status>;
@@ -121,6 +125,11 @@ export function world(options: WorldOptions = {}): World {
       const settled = await settleCoverage(state, [], adapters);
       state = settled.state;
       return settled.commands;
+    },
+    async cover(tabId) {
+      const events = await coverTab(state, tabId, adapters);
+      state = events.reduce(reduce, state);
+      return events;
     },
     refuse(...next) {
       refusals.push(...next);

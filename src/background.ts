@@ -1,8 +1,10 @@
 // Interface: the service worker. It has no callers, so its interface is what it wires together:
 // storage changes, tab events, detaches, child sessions, and a periodic tick all become Coverage
 // events, and every event is folded, reconciled, and run in one serialised queue so two events
-// cannot command the same tab twice. It re-derives state on start, which is what makes a worker
-// restart invisible.
+// cannot command the same tab twice. A tab that has just been created is the one thing that does not
+// queue: Coverage covers it on the spot and the queue folds in what came back, because the tab has
+// about 15 ms before Chrome seals Spoofer's New Tab Page against every call. It re-derives state on
+// start, which is what makes a worker restart invisible.
 // Errors: a refused attach or send is recorded inside Coverage and shows up in the status it
 // exposes. A step that throws anyway is recorded as a failed run and the queue carries on, because
 // one bad event must not stop the next.
@@ -12,7 +14,7 @@ import { chromeDebugger } from './chrome/debugger.js';
 import { chromeMessaging, type Request } from './chrome/messaging.js';
 import { chromeSession, chromeStorage } from './chrome/storage.js';
 import { chromeTabs } from './chrome/tabs.js';
-import { NO_COVERAGE, nextTick, reduce, settle, status, type Adapters, type CoverageEvent } from './coverage.js';
+import { NO_COVERAGE, cover, nextTick, reduce, settle, status, type Adapters, type CoverageEvent } from './coverage.js';
 import { clearSelection, selectCity, setEnabled } from './settings.js';
 
 const adapters: Adapters = {
@@ -44,7 +46,14 @@ async function step(events: readonly CoverageEvent[]): Promise<void> {
 chromeStorage.onChange(() => void dispatch({ type: 'settings-changed' }));
 // Paused lives in session storage, so a write there is a change to re-derive from like any other.
 chromeSession.onChange(() => void dispatch({ type: 'settings-changed' }));
-chromeTabs.onCreated((tabId) => void dispatch({ type: 'tab-created', tabId }));
+chromeTabs.onCreated((tabId) => {
+  // Ahead of the queue, or Chrome seals the tab before the Override reaches it. A cover that throws
+  // still has to report the tab, or nothing would know it exists until the next re-derive.
+  void cover(state, tabId, adapters).then(
+    (events) => dispatch(...events),
+    () => dispatch({ type: 'tab-created', tabId }),
+  );
+});
 chromeTabs.onUpdated((tabId, loading) => void dispatch({ type: 'tab-status', tabId, loading }));
 chromeTabs.onRemoved((tabId) => void dispatch({ type: 'tab-removed', tabId }));
 chromeDebugger.onDetach((tabId, reason) => void dispatch({ type: 'detached', tabId, reason }));
